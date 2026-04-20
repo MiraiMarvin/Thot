@@ -48,7 +48,7 @@ def main():
     os.makedirs(MODELS_DIR, exist_ok=True)
 
     X = np.load(X_PATH)
-    y = np.load(Y_PATH)
+    y = np.load(Y_PATH, allow_pickle=True)
     print(f"Données chargées : X={X.shape}, classes={np.unique(y).tolist()}")
 
     # Encode les labels string → entiers (requis par sklearn)

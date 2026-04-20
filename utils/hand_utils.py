@@ -4,11 +4,11 @@ import numpy as np
 
 def extract_landmarks(hand_landmarks) -> np.ndarray:
     """
-    Retourne un vecteur plat (63,) contenant (x, y, z) des 21 landmarks
-    dans les coordonnées normalisées MediaPipe (0–1 relatives au frame).
+    Accepte une liste de NormalizedLandmark (Tasks API mediapipe 0.10+).
+    Retourne un vecteur plat (63,) avec (x, y, z) des 21 landmarks.
     """
     coords = []
-    for lm in hand_landmarks.landmark:
+    for lm in hand_landmarks:   # Tasks API : itération directe sur la liste
         coords.extend([lm.x, lm.y, lm.z])
     return np.array(coords, dtype=np.float32)
 

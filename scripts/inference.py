@@ -1,10 +1,8 @@
 """
 inference.py — Inférence temps réel + synthèse vocale.
+Utilise la MediaPipe Tasks API (mediapipe >= 0.10).
 
 Usage : python scripts/inference.py
-
-Charge le modèle entraîné, ouvre la webcam, prédit le signe à chaque frame
-et déclenche la TTS dès qu'une prédiction est stable sur plusieurs frames.
 'q' pour quitter.
 """
 import cv2
@@ -15,6 +13,7 @@ import os
 import sys
 import collections
 import time
+import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.hand_utils import extract_landmarks, normalize_landmarks
@@ -24,183 +23,187 @@ from utils.tts_utils   import TTSEngine
 MODELS_DIR = os.path.join(os.path.dirname(__file__), '..', 'models')
 MODEL_PATH = os.path.join(MODELS_DIR, 'rf_model.joblib')
 ENC_PATH   = os.path.join(MODELS_DIR, 'label_encoder.joblib')
+MP_MODEL   = os.path.join(MODELS_DIR, 'hand_landmarker.task')
 CAM_INDEX  = 0
 
-# Lissage temporel : vote majoritaire sur les N dernières frames
-SMOOTH_WINDOW    = 7
-# Nombre de frames stables consécutives avant de déclencher la TTS
-MIN_STABLE_FRAMES = 15
-# Délai minimum (secondes) entre deux synthèses vocales
-TTS_COOLDOWN     = 2.5
-# Seuil de confiance (probabilité RF) en dessous duquel on n'affiche rien
-CONF_THRESHOLD   = 0.65
-# ──────────────────────────────────────────────────────────────────────────────
+MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/"
+    "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+)
 
-# Palette couleurs BGR
+SMOOTH_WINDOW     = 7
+MIN_STABLE_FRAMES = 15
+TTS_COOLDOWN      = 2.5
+CONF_THRESHOLD    = 0.65
+
+HAND_CONNECTIONS = [
+    (0,1),(1,2),(2,3),(3,4),
+    (0,5),(5,6),(6,7),(7,8),
+    (0,9),(9,10),(10,11),(11,12),
+    (0,13),(13,14),(14,15),(15,16),
+    (0,17),(17,18),(18,19),(19,20),
+    (5,9),(9,13),(13,17),
+]
+
 C_GREEN  = (0, 215, 0)
 C_ORANGE = (0, 165, 255)
 C_GRAY   = (80, 80, 80)
 C_WHITE  = (240, 240, 240)
+# ──────────────────────────────────────────────────────────────────────────────
 
 
-def draw_pill(img, pt1, pt2, color, alpha=0.55):
-    """
-    Fond semi-transparent arrondi pour le HUD principal.
-    Technique : blend d'un rectangle sur une copie du frame.
-    """
-    overlay = img.copy()
-    x1, y1 = pt1
-    x2, y2 = pt2
-    r = (y2 - y1) // 2
-    cv2.rectangle(overlay, (x1+r, y1), (x2-r, y2), color, -1)
-    cv2.circle(overlay,    (x1+r, (y1+y2)//2), r, color, -1)
-    cv2.circle(overlay,    (x2-r, (y1+y2)//2), r, color, -1)
-    cv2.addWeighted(overlay, alpha, img, 1-alpha, 0, img)
+def download_model(path: str):
+    if os.path.exists(path):
+        return
+    print(f"Téléchargement du modèle MediaPipe …")
+    urllib.request.urlretrieve(MODEL_URL, path)
+    print(f"  Modèle sauvegardé : {path}")
+
+
+def draw_hand(frame, landmarks, h, w):
+    pts = [(int(lm.x * w), int(lm.y * h)) for lm in landmarks]
+    for a, b in HAND_CONNECTIONS:
+        cv2.line(frame, pts[a], pts[b], (0, 200, 0), 2)
+    for pt in pts:
+        cv2.circle(frame, pt, 5, (255, 255, 255), -1)
+        cv2.circle(frame, pt, 5, (0, 150, 0), 1)
 
 
 def main():
+    download_model(MP_MODEL)
+
     if not os.path.exists(MODEL_PATH):
-        print(f"Erreur : modele introuvable ({MODEL_PATH}).")
-        print("Lancez train.py d'abord.")
+        print(f"Erreur : modèle RF introuvable ({MODEL_PATH}). Lancez train.py d'abord.")
         sys.exit(1)
 
     clf = joblib.load(MODEL_PATH)
     le  = joblib.load(ENC_PATH)
-    print(f"Modele charge — {len(le.classes_)} classes : {le.classes_.tolist()}")
+    print(f"Modèle RF chargé — {len(le.classes_)} classes : {le.classes_.tolist()}")
 
     tts = TTSEngine()
 
-    mp_hands  = mp.solutions.hands
-    mp_draw   = mp.solutions.drawing_utils
-    mp_style  = mp.solutions.drawing_styles
-    hands_sol = mp_hands.Hands(
-        static_image_mode=False,
-        max_num_hands=1,
-        min_detection_confidence=0.7,
+    BaseOptions           = mp.tasks.BaseOptions
+    HandLandmarker        = mp.tasks.vision.HandLandmarker
+    HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
+    VisionRunningMode     = mp.tasks.vision.RunningMode
+
+    options = HandLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=MP_MODEL),
+        running_mode=VisionRunningMode.VIDEO,
+        num_hands=1,
+        min_hand_detection_confidence=0.7,
+        min_hand_presence_confidence=0.5,
         min_tracking_confidence=0.6,
     )
 
     cap = cv2.VideoCapture(CAM_INDEX)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    # Réduire le buffer interne à 1 frame pour minimiser la latence
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE,   1)
 
-    # Buffers et état
     pred_buffer  = collections.deque(maxlen=SMOOTH_WINDOW)
     stable_count = 0
     last_spoken  = ""
     last_speak_t = 0.0
-    fps_ema      = 0.0       # moyenne mobile exponentielle du FPS
+    fps_ema      = 0.0
     t_prev       = time.perf_counter()
+    t_start      = time.time()
 
-    print("Inference active — appuyez sur 'q' pour quitter.")
+    print("Inférence active — appuyez sur 'q' pour quitter.")
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    with HandLandmarker.create_from_options(options) as landmarker:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        frame = cv2.flip(frame, 1)
+            frame    = cv2.flip(frame, 1)
+            h, w     = frame.shape[:2]
+            rgb      = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
-        # Traitement MediaPipe (RGB, no-copy pour économiser de la mémoire)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb.flags.writeable = False
-        results = hands_sol.process(rgb)
-        rgb.flags.writeable = True
+            ts_ms   = int((time.time() - t_start) * 1000)
+            results = landmarker.detect_for_video(mp_image, ts_ms)
 
-        prediction  = None
-        confidence  = 0.0
-        hand_found  = results.multi_hand_landmarks is not None
+            prediction = None
+            confidence = 0.0
+            hand_found = len(results.hand_landmarks) > 0
 
-        if hand_found:
-            hlm = results.multi_hand_landmarks[0]
-            mp_draw.draw_landmarks(
-                frame, hlm, mp_hands.HAND_CONNECTIONS,
-                mp_style.get_default_hand_landmarks_style(),
-                mp_style.get_default_hand_connections_style(),
-            )
-            # Extraction → normalisation → prédiction RF
-            raw    = extract_landmarks(hlm)
-            normed = normalize_landmarks(raw).reshape(1, -1)
-            proba  = clf.predict_proba(normed)[0]
-            top_i  = int(np.argmax(proba))
-            confidence = float(proba[top_i])
-            if confidence >= CONF_THRESHOLD:
-                prediction = le.classes_[top_i]
+            if hand_found:
+                lms    = results.hand_landmarks[0]
+                draw_hand(frame, lms, h, w)
+                raw    = extract_landmarks(lms)
+                normed = normalize_landmarks(raw).reshape(1, -1)
+                proba  = clf.predict_proba(normed)[0]
+                top_i  = int(np.argmax(proba))
+                confidence = float(proba[top_i])
+                if confidence >= CONF_THRESHOLD:
+                    prediction = le.classes_[top_i]
 
-        # ── Lissage temporel (vote majoritaire) ──────────────────────────────
-        pred_buffer.append(prediction)
-        smoothed = None
-        if len(pred_buffer) == SMOOTH_WINDOW:
-            counts_pred = collections.Counter(pred_buffer)
-            best, cnt   = counts_pred.most_common(1)[0]
-            if best is not None and cnt >= (SMOOTH_WINDOW // 2 + 1):
-                smoothed = best
+            # ── Lissage ──────────────────────────────────────────────────────
+            pred_buffer.append(prediction)
+            smoothed = None
+            if len(pred_buffer) == SMOOTH_WINDOW:
+                best, cnt = collections.Counter(pred_buffer).most_common(1)[0]
+                if best is not None and cnt >= (SMOOTH_WINDOW // 2 + 1):
+                    smoothed = best
 
-        # Compteur de stabilité : incrémenté seulement si la prédiction ne change pas
-        if smoothed is not None and smoothed == prediction:
-            stable_count += 1
-        else:
-            stable_count = 0
+            if smoothed is not None and smoothed == prediction:
+                stable_count += 1
+            else:
+                stable_count = 0
 
-        # ── Déclenchement TTS ────────────────────────────────────────────────
-        now = time.time()
-        if (stable_count >= MIN_STABLE_FRAMES
-                and smoothed is not None
-                and now - last_speak_t > TTS_COOLDOWN):
-            tts.speak(smoothed)
-            last_spoken  = smoothed
-            last_speak_t = now
-            stable_count = 0   # repart à zéro pour éviter les déclenchements en rafale
+            # ── TTS ──────────────────────────────────────────────────────────
+            now = time.time()
+            if (stable_count >= MIN_STABLE_FRAMES
+                    and smoothed is not None
+                    and now - last_speak_t > TTS_COOLDOWN):
+                tts.speak(smoothed)
+                last_spoken  = smoothed
+                last_speak_t = now
+                stable_count = 0
 
-        # ── Calcul FPS (EMA) ─────────────────────────────────────────────────
-        t_now   = time.perf_counter()
-        fps_ema = 0.9 * fps_ema + 0.1 * (1.0 / max(t_now - t_prev, 1e-9))
-        t_prev  = t_now
+            # ── FPS ──────────────────────────────────────────────────────────
+            t_now   = time.perf_counter()
+            fps_ema = 0.9 * fps_ema + 0.1 * (1.0 / max(t_now - t_prev, 1e-9))
+            t_prev  = t_now
 
-        # ── HUD ──────────────────────────────────────────────────────────────
-        h, w = frame.shape[:2]
+            # ── HUD ──────────────────────────────────────────────────────────
+            cv2.putText(frame, f"FPS {fps_ema:.0f}", (10, 28),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, C_WHITE, 1, cv2.LINE_AA)
 
-        # FPS coin supérieur gauche
-        cv2.putText(frame, f"FPS {fps_ema:.0f}", (10, 28),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, C_WHITE, 1, cv2.LINE_AA)
+            box_y1, box_y2 = h - 75, h - 20
+            box_x1, box_x2 = w//2 - 150, w//2 + 150
 
-        # Bandeau de prédiction centré en bas
-        box_y1, box_y2 = h - 75, h - 20
-        box_x1, box_x2 = w//2 - 150, w//2 + 150
+            if smoothed:
+                color = C_GREEN if confidence >= 0.85 else C_ORANGE
+                cv2.rectangle(frame, (box_x1, box_y1), (box_x2, box_y2), (30,30,30), -1)
+                cv2.putText(frame, f"{smoothed}  {confidence*100:.0f}%",
+                            (box_x1+15, box_y2-12),
+                            cv2.FONT_HERSHEY_DUPLEX, 1.0, color, 2, cv2.LINE_AA)
+            elif hand_found:
+                cv2.rectangle(frame, (box_x1, box_y1), (box_x2, box_y2), (30,30,30), -1)
+                cv2.putText(frame, "Confiance faible…", (box_x1+15, box_y2-12),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.75, C_ORANGE, 1, cv2.LINE_AA)
+            else:
+                cv2.putText(frame, "Montrez votre main", (w//2-130, box_y2-12),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.75, C_GRAY, 1, cv2.LINE_AA)
 
-        if smoothed:
-            box_color = C_GREEN if confidence >= 0.85 else C_ORANGE
-            draw_pill(frame, (box_x1, box_y1), (box_x2, box_y2), (20, 20, 20))
-            label_str = f"{smoothed}   {confidence*100:.0f}%"
-            cv2.putText(frame, label_str, (box_x1 + 20, box_y2 - 12),
-                        cv2.FONT_HERSHEY_DUPLEX, 1.0, box_color, 2, cv2.LINE_AA)
-        elif hand_found:
-            draw_pill(frame, (box_x1, box_y1), (box_x2, box_y2), (20, 20, 20))
-            cv2.putText(frame, "Confiance faible…", (box_x1 + 15, box_y2 - 12),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.75, C_ORANGE, 1, cv2.LINE_AA)
-        else:
-            cv2.putText(frame, "Montrez votre main", (w//2 - 130, box_y2 - 12),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.75, C_GRAY, 1, cv2.LINE_AA)
+            # Barre de stabilité
+            bar_w = int((min(stable_count, MIN_STABLE_FRAMES) / MIN_STABLE_FRAMES)
+                        * (box_x2 - box_x1 - 4))
+            if bar_w > 0:
+                cv2.rectangle(frame,
+                              (box_x1+2, box_y2+2), (box_x1+2+bar_w, box_y2+8),
+                              (0, 180, 255), -1)
+            # ─────────────────────────────────────────────────────────────────
 
-        # Barre de stabilité (progression vers MIN_STABLE_FRAMES)
-        bar_max = box_x2 - box_x1 - 4
-        bar_w   = int((min(stable_count, MIN_STABLE_FRAMES) / MIN_STABLE_FRAMES) * bar_max)
-        if bar_w > 0:
-            cv2.rectangle(frame,
-                          (box_x1 + 2, box_y2 + 2),
-                          (box_x1 + 2 + bar_w, box_y2 + 8),
-                          (0, 180, 255), -1)
-        # ─────────────────────────────────────────────────────────────────────
-
-        cv2.imshow("Sign Language Translator", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+            cv2.imshow("Sign Language Translator", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
     cap.release()
     cv2.destroyAllWindows()
-    hands_sol.close()
 
 
 if __name__ == '__main__':
