@@ -108,8 +108,10 @@ def main():
     fps_ema      = 0.0
     t_prev       = time.perf_counter()
     t_start      = time.time()
+    sentence     = []          # historique des mots reconnus
+    MAX_SENTENCE = 8           # nombre max de mots affichés
 
-    print("Inférence active — appuyez sur 'q' pour quitter.")
+    print("Inférence active — 'q' quitter | 'ESPACE' effacer la phrase.")
 
     with HandLandmarker.create_from_options(options) as landmarker:
         while True:
@@ -153,7 +155,7 @@ def main():
             else:
                 stable_count = 0
 
-            # ── TTS ──────────────────────────────────────────────────────────
+            # ── TTS + historique ─────────────────────────────────────────────
             now = time.time()
             if (stable_count >= MIN_STABLE_FRAMES
                     and smoothed is not None
@@ -162,6 +164,9 @@ def main():
                 last_spoken  = smoothed
                 last_speak_t = now
                 stable_count = 0
+                sentence.append(smoothed)
+                if len(sentence) > MAX_SENTENCE:
+                    sentence.pop(0)
 
             # ── FPS ──────────────────────────────────────────────────────────
             t_now   = time.perf_counter()
@@ -196,11 +201,22 @@ def main():
                 cv2.rectangle(frame,
                               (box_x1+2, box_y2+2), (box_x1+2+bar_w, box_y2+8),
                               (0, 180, 255), -1)
+
+            # ── Historique de phrase (haut de l'écran) ────────────────────────
+            if sentence:
+                phrase = ' '.join(sentence)
+                # Fond semi-transparent
+                cv2.rectangle(frame, (0, 0), (w, 45), (20, 20, 20), -1)
+                cv2.putText(frame, phrase, (10, 32),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 220, 50), 2, cv2.LINE_AA)
             # ─────────────────────────────────────────────────────────────────
 
             cv2.imshow("Sign Language Translator", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
                 break
+            if key == ord(' '):   # ESPACE = effacer la phrase
+                sentence.clear()
 
     cap.release()
     cv2.destroyAllWindows()

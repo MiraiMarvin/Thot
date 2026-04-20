@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SignTranslate — ASL Live</title>
+<style>
+/* ─── Reset & Base ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --purple: #6C63FF;
+  --cyan:   #00D9FF;
+  --pink:   #FF6B9D;
+  --bg:     #07070f;
+  --glass:  rgba(255,255,255,0.04);
+  --border: rgba(255,255,255,0.08);
+  --text:   #e2e2f0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow: hidden;
+}
+
+/* Ambient background blobs */
+body::before, body::after {
+  content: '';
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: 0;
+}
+body::before {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(108,99,255,0.12), transparent 70%);
+  top: -150px; left: -100px;
+  animation: blobDrift 12s ease-in-out infinite alternate;
+}
+body::after {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(0,217,255,0.08), transparent 70%);
+  bottom: -100px; right: -80px;
+  animation: blobDrift 16s ease-in-out infinite alternate-reverse;
+}
+@keyframes blobDrift {
+  from { transform: translate(0,0) scale(1); }
+  to   { transform: translate(40px, 30px) scale(1.1); }
+}
+
+/* ─── Layout ──────────────────────────────────────────────────────────────── */
+.app {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ─── Header ──────────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-icon {
+  width: 38px; height: 38px;
+}
+
+.brand-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  background: linear-gradient(135deg, var(--purple), var(--cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fps-chip {
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.35);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px 9px;
+}
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  transition: all 0.4s ease;
+}
+.status-dot.active {
+  background: #00ff88;
+  box-shadow: 0 0 0 3px rgba(0,255,136,0.2);
+  animation: dotPulse 1.4s ease-in-out infinite;
+}
+@keyframes dotPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(0,255,136,0.2); }
+  50%       { box-shadow: 0 0 0 6px rgba(0,255,136,0.05); }
+}
+
+/* ─── Camera ──────────────────────────────────────────────────────────────── */
+.camera-shell {
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #0d0d1a;
+  box-shadow:
+    0 0 0 1px rgba(108,99,255,0.25),
+    0 24px 64px rgba(0,0,0,0.7),
+    0 0 100px rgba(108,99,255,0.08);
+}
+
+.camera-shell img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 22px;
+}
+
+/* Scanning line overlay */
+.scan-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(to right, transparent, rgba(108,99,255,0.5), transparent);
+  animation: scan 4s linear infinite;
+  pointer-events: none;
+  opacity: 0.4;
+}
+@keyframes scan {
+  from { top: 0%; }
+  to   { top: 100%; }
+}
+
+/* Corner accents */
+.corner {
+  position: absolute;
+  width: 20px; height: 20px;
+  border-color: rgba(108,99,255,0.5);
+  border-style: solid;
+  pointer-events: none;
+}
+.corner.tl { top:10px; left:10px;   border-width: 2px 0 0 2px; border-radius: 4px 0 0 0; }
+.corner.tr { top:10px; right:10px;  border-width: 2px 2px 0 0; border-radius: 0 4px 0 0; }
+.corner.bl { bottom:10px; left:10px;   border-width: 0 0 2px 2px; border-radius: 0 0 0 4px; }
+.corner.br { bottom:10px; right:10px;  border-width: 0 2px 2px 0; border-radius: 0 0 4px 0; }
+
+/* ─── Bottom panels ───────────────────────────────────────────────────────── */
+.panels {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+}
+
+/* Glass card base */
+.glass-card {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  padding: 18px 20px;
+  transition: border-color 0.4s, box-shadow 0.4s;
+}
+.glass-card.lit {
+  border-color: rgba(108,99,255,0.4);
+  box-shadow: 0 0 40px rgba(108,99,255,0.1);
+}
+
+/* ── Voice card ── */
+.voice-card {
+  flex-shrink: 0;
+  width: 158px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-label {
+  font-size: 0.6rem;
+  color: rgba(255,255,255,0.3);
+  text-transform: uppercase;
+  letter-spacing: 1.8px;
+  font-weight: 600;
+}
+
+/* SVG Equalizer bars */
+.eq-wrap {
+  position: relative;
+  width: 100%;
+  height: 52px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+}
+
+.eq-bar {
+  flex: 1;
+  max-width: 12px;
+  border-radius: 6px;
+  min-height: 4px;
+  background: linear-gradient(to top, var(--purple), var(--cyan));
+  transform-origin: bottom center;
+  animation: eqIdle var(--dur, 1.8s) ease-in-out infinite var(--delay, 0s);
+  transition: box-shadow 0.3s;
+}
+
+@keyframes eqIdle {
+  0%, 100% { height: 4px; }
+  50%       { height: 14px; }
+}
+
+/* Speaking: fast + tall + glow */
+.eq-wrap.speaking .eq-bar {
+  animation-name: eqSpeak;
+  box-shadow: 0 0 12px rgba(108,99,255,0.7), 0 0 4px var(--cyan);
+}
+@keyframes eqSpeak {
+  0%, 100% { height: 10px; }
+  50%       { height: 48px; }
+}
+.eq-wrap.speaking .eq-bar { animation-duration: var(--spk-dur, 0.3s); }
+
+/* Post-speak: drop down */
+.eq-wrap.cooling .eq-bar {
+  animation: eqCool 0.7s ease-out forwards;
+  animation-duration: var(--cool-dur, 0.7s) !important;
+}
+@keyframes eqCool {
+  from { height: 48px; }
+  to   { height: 4px; }
+}
+
+/* Individual bar timing */
+.eq-bar:nth-child(1) { --dur:1.9s; --delay:0.00s; --spk-dur:0.30s; --cool-dur:0.60s; }
+.eq-bar:nth-child(2) { --dur:1.5s; --delay:0.12s; --spk-dur:0.24s; --cool-dur:0.55s; }
+.eq-bar:nth-child(3) { --dur:2.1s; --delay:0.28s; --spk-dur:0.36s; --cool-dur:0.65s; }
+.eq-bar:nth-child(4) { --dur:1.7s; --delay:0.08s; --spk-dur:0.28s; --cool-dur:0.58s; }
+.eq-bar:nth-child(5) { --dur:1.4s; --delay:0.20s; --spk-dur:0.22s; --cool-dur:0.50s; }
+.eq-bar:nth-child(6) { --dur:1.8s; --delay:0.35s; --spk-dur:0.34s; --cool-dur:0.62s; }
+.eq-bar:nth-child(7) { --dur:2.0s; --delay:0.05s; --spk-dur:0.26s; --cool-dur:0.56s; }
+.eq-bar:nth-child(8) { --dur:1.6s; --delay:0.42s; --spk-dur:0.32s; --cool-dur:0.68s; }
+.eq-bar:nth-child(9) { --dur:1.9s; --delay:0.16s; --spk-dur:0.27s; --cool-dur:0.53s; }
+
+.speak-status {
+  font-size: 0.62rem;
+  color: rgba(255,255,255,0.3);
+  letter-spacing: 0.5px;
+  transition: color 0.3s;
+  text-align: center;
+}
+.speak-status.active { color: var(--cyan); }
+
+/* ── Prediction card ── */
+.pred-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 110px;
+}
+
+.pred-word {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  line-height: 1;
+  background: linear-gradient(135deg, #a78bfa 0%, #38bdf8 60%, #34d399 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  transition: opacity 0.2s;
+  min-height: 2.6rem;
+  animation: wordIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes wordIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.pred-word.empty {
+  font-size: 0.9rem;
+  font-weight: 400;
+  background: none;
+  -webkit-text-fill-color: rgba(255,255,255,0.18);
+  letter-spacing: 0;
+  animation: none;
+}
+
+.bars-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bar-tag {
+  font-size: 0.58rem;
+  color: rgba(255,255,255,0.25);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  width: 30px;
+  flex-shrink: 0;
+}
+.bar-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+.bar-fill.conf  { background: linear-gradient(to right, var(--purple), var(--cyan)); }
+.bar-fill.stab  { background: linear-gradient(to right, var(--cyan), #34d399); }
+.bar-pct {
+  font-size: 0.62rem;
+  color: rgba(255,255,255,0.3);
+  font-variant-numeric: tabular-nums;
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ─── Sentence history ────────────────────────────────────────────────────── */
+.sentence-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 38px;
+  padding: 10px 16px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  backdrop-filter: blur(20px);
+}
+
+.sent-label {
+  font-size: 0.58rem;
+  color: rgba(255,255,255,0.25);
+  text-transform: uppercase;
+  letter-spacing: 1.8px;
+  font-weight: 600;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.chip {
+  background: rgba(108,99,255,0.18);
+  border: 1px solid rgba(108,99,255,0.25);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.8);
+  animation: chipPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  cursor: default;
+  transition: background 0.2s;
+}
+.chip:hover { background: rgba(108,99,255,0.3); }
+.chip.latest {
+  background: rgba(108,99,255,0.38);
+  border-color: rgba(108,99,255,0.55);
+  color: white;
+  font-weight: 600;
+}
+@keyframes chipPop {
+  from { opacity:0; transform: scale(0.6) translateY(4px); }
+  to   { opacity:1; transform: scale(1)   translateY(0); }
+}
+
+.sent-empty {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.15);
+  font-style: italic;
+}
+
+.clear-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 3px 10px;
+  color: rgba(255,255,255,0.25);
+  font-size: 0.65rem;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+}
+.clear-btn:hover {
+  background: rgba(255,80,80,0.08);
+  border-color: rgba(255,80,80,0.3);
+  color: rgba(255,120,120,0.8);
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Header ── -->
+  <div class="header">
+    <div class="brand">
+      <!-- Hand logo SVG -->
+      <svg class="brand-icon" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#6C63FF"/>
+            <stop offset="100%" stop-color="#00D9FF"/>
+          </linearGradient>
+        </defs>
+        <rect width="38" height="38" rx="11" fill="rgba(108,99,255,0.14)"/>
+        <path d="M19 7C19 5.9 18.1 5 17 5S15 5.9 15 7V19" stroke="url(#logoGrad)" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M22.5 8.5C22.5 7.4 21.6 6.5 20.5 6.5S18.5 7.4 18.5 8.5V19" stroke="url(#logoGrad)" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M26 11C26 9.9 25.1 9 24 9S22 9.9 22 11V19" stroke="url(#logoGrad)" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M15 12.5C15 11.4 14.1 10.5 13 10.5S11 11.4 11 12.5V19" stroke="url(#logoGrad)" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M11 19Q10 23 10 27H28Q28 23 27 20L11 19Z" fill="url(#logoGrad)" opacity="0.85"/>
+      </svg>
+      <span class="brand-name">SignTranslate</span>
+    </div>
+    <div class="header-meta">
+      <span class="fps-chip" id="fpsDisplay">-- FPS</span>
+      <div class="status-dot" id="statusDot" title="Main détectée"></div>
+    </div>
+  </div>
+
+  <!-- ── Camera ── -->
+  <div class="camera-shell">
+    <img src="/video_feed" alt="Flux webcam"/>
+    <div class="scan-line"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+  </div>
+
+  <!-- ── Bottom panels ── -->
+  <div class="panels">
+
+    <!-- Voice card -->
+    <div class="glass-card voice-card" id="voiceCard">
+      <div class="card-label">Synthèse vocale</div>
+
+      <!-- Equalizer SVG-style avec divs animés -->
+      <div class="eq-wrap" id="eqWrap">
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+      </div>
+
+      <div class="speak-status" id="speakStatus">En attente</div>
+    </div>
+
+    <!-- Prediction card -->
+    <div class="glass-card pred-card" id="predCard">
+      <div class="card-label">Signe détecté</div>
+      <div class="pred-word empty" id="predWord">Montrez votre main…</div>
+      <div class="bars-stack">
+        <div class="bar-row">
+          <span class="bar-tag">Conf</span>
+          <div class="bar-track"><div class="bar-fill conf" id="confFill"></div></div>
+          <span class="bar-pct" id="confPct">0%</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-tag">Stab</span>
+          <div class="bar-track"><div class="bar-fill stab" id="stabFill"></div></div>
+          <span class="bar-pct" id="stabPct">0%</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Sentence history ── -->
+  <div class="sentence-row" id="sentenceRow">
+    <span class="sent-label">Phrase</span>
+    <span class="sent-empty">—</span>
+    <button class="clear-btn" onclick="clearSentence()">Effacer</button>
+  </div>
+
+</div>
+
+<!-- Socket.IO -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+const socket = io();
+
+const eqWrap     = document.getElementById('eqWrap');
+const predWord   = document.getElementById('predWord');
+const predCard   = document.getElementById('predCard');
+const voiceCard  = document.getElementById('voiceCard');
+const confFill   = document.getElementById('confFill');
+const confPct    = document.getElementById('confPct');
+const stabFill   = document.getElementById('stabFill');
+const stabPct    = document.getElementById('stabPct');
+const sentRow    = document.getElementById('sentenceRow');
+const fpsDisplay = document.getElementById('fpsDisplay');
+const statusDot  = document.getElementById('statusDot');
+const speakStatus= document.getElementById('speakStatus');
+
+let speakTimer = null;
+let lastWord   = '';
+
+socket.on('state', (d) => {
+
+  // FPS
+  fpsDisplay.textContent = `${d.fps} FPS`;
+
+  // Hand dot
+  statusDot.classList.toggle('active', d.hand_detected);
+
+  // Confidence + stability bars
+  confFill.style.width = `${d.confidence}%`;
+  confPct.textContent  = `${d.confidence}%`;
+  const stabPct100 = Math.round((d.stable_progress || 0) * 100);
+  stabFill.style.width = `${stabPct100}%`;
+  stabPct.textContent  = `${stabPct100}%`;
+
+  // Prediction word (re-animate only on change)
+  if (d.prediction && d.prediction !== lastWord) {
+    lastWord = d.prediction;
+    predWord.classList.remove('empty');
+    predWord.style.animation = 'none';
+    requestAnimationFrame(() => {
+      predWord.style.animation = '';
+      predWord.textContent = d.prediction;
+    });
+    predCard.classList.add('lit');
+    voiceCard.classList.add('lit');
+  } else if (!d.prediction) {
+    predWord.textContent = 'Montrez votre main…';
+    predWord.classList.add('empty');
+    predCard.classList.remove('lit');
+    voiceCard.classList.remove('lit');
+    lastWord = '';
+  }
+
+  // Speaking animation
+  if (d.speaking) {
+    eqWrap.classList.remove('cooling');
+    eqWrap.classList.add('speaking');
+    speakStatus.textContent = 'Synthèse vocale…';
+    speakStatus.classList.add('active');
+
+    clearTimeout(speakTimer);
+    speakTimer = setTimeout(() => {
+      eqWrap.classList.remove('speaking');
+      eqWrap.classList.add('cooling');
+      speakStatus.textContent = 'En attente';
+      speakStatus.classList.remove('active');
+      setTimeout(() => eqWrap.classList.remove('cooling'), 800);
+    }, 1800);
+  }
+
+  // Sentence chips
+  renderSentence(d.sentence);
+});
+
+function renderSentence(words) {
+  const label = '<span class="sent-label">Phrase</span>';
+  const btn   = '<button class="clear-btn" onclick="clearSentence()">Effacer</button>';
+  if (!words || words.length === 0) {
+    sentRow.innerHTML = label + '<span class="sent-empty">—</span>' + btn;
+    return;
+  }
+  const chips = words.map((w, i) => {
+    const cls = i === words.length - 1 ? 'chip latest' : 'chip';
+    return `<span class="${cls}">${w}</span>`;
+  }).join('');
+  sentRow.innerHTML = label + chips + btn;
+}
+
+function clearSentence() {
+  socket.emit('clear_sentence');
+  renderSentence([]);
+}
+
+// Keyboard shortcut: Space = clear
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); clearSentence(); }
+});
+</script>
+</body>
+</html>
