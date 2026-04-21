@@ -3,505 +3,554 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SignTranslate — ASL Live</title>
+<title>SignTranslate AR</title>
 <style>
-/* ─── Reset & Base ────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
   --purple: #6C63FF;
   --cyan:   #00D9FF;
+  --green:  #00FFA3;
   --pink:   #FF6B9D;
-  --bg:     #07070f;
+  --bg:     #06060e;
   --glass:  rgba(255,255,255,0.04);
-  --border: rgba(255,255,255,0.08);
-  --text:   #e2e2f0;
+  --border: rgba(255,255,255,0.07);
 }
 
-body {
+html, body {
+  height: 100%;
   background: var(--bg);
-  color: var(--text);
+  color: #e0e0f0;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
-  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Ambient blobs ── */
+.blob {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+  animation: blobDrift 14s ease-in-out infinite alternate;
+}
+.blob-1 { width:600px; height:600px; background:rgba(108,99,255,0.10); top:-200px; left:-150px; }
+.blob-2 { width:500px; height:500px; background:rgba(0,217,255,0.07);  bottom:-150px; right:-100px; animation-direction:alternate-reverse; animation-duration:18s; }
+.blob-3 { width:300px; height:300px; background:rgba(0,255,163,0.05);  top:40%; left:40%; animation-duration:22s; }
+@keyframes blobDrift {
+  from { transform: translate(0,0) scale(1); }
+  to   { transform: translate(50px,30px) scale(1.12); }
+}
+
+/* ── Layout ── */
+.app {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px 16px;
-  overflow: hidden;
+  padding: 16px;
+  gap: 12px;
 }
 
-/* Ambient background blobs */
-body::before, body::after {
-  content: '';
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(100px);
-  pointer-events: none;
-  z-index: 0;
-}
-body::before {
-  width: 500px; height: 500px;
-  background: radial-gradient(circle, rgba(108,99,255,0.12), transparent 70%);
-  top: -150px; left: -100px;
-  animation: blobDrift 12s ease-in-out infinite alternate;
-}
-body::after {
-  width: 400px; height: 400px;
-  background: radial-gradient(circle, rgba(0,217,255,0.08), transparent 70%);
-  bottom: -100px; right: -80px;
-  animation: blobDrift 16s ease-in-out infinite alternate-reverse;
-}
-@keyframes blobDrift {
-  from { transform: translate(0,0) scale(1); }
-  to   { transform: translate(40px, 30px) scale(1.1); }
-}
-
-/* ─── Layout ──────────────────────────────────────────────────────────────── */
-.app {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 680px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* ─── Header ──────────────────────────────────────────────────────────────── */
+/* ── Header ── */
 .header {
+  width: 100%;
+  max-width: 900px;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.brand-icon {
-  width: 38px; height: 38px;
-}
-
+.brand { display:flex; align-items:center; gap:10px; }
+.brand-icon { width:36px; height:36px; }
 .brand-name {
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 700;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.3px;
   background: linear-gradient(135deg, var(--purple), var(--cyan));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.header-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.fps-chip {
-  font-size: 0.68rem;
+.header-right { display:flex; align-items:center; gap:10px; }
+.chip {
+  font-size: 0.65rem;
   color: rgba(255,255,255,0.35);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.5px;
   background: var(--glass);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 3px 9px;
+  font-variant-numeric: tabular-nums;
 }
-
-.status-dot {
+.dot {
   width: 8px; height: 8px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.15);
-  transition: all 0.4s ease;
+  background: rgba(255,255,255,0.12);
+  transition: all 0.4s;
 }
-.status-dot.active {
-  background: #00ff88;
-  box-shadow: 0 0 0 3px rgba(0,255,136,0.2);
-  animation: dotPulse 1.4s ease-in-out infinite;
+.dot.on {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(0,255,163,0.18);
+  animation: dotPulse 1.6s infinite;
 }
 @keyframes dotPulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(0,255,136,0.2); }
-  50%       { box-shadow: 0 0 0 6px rgba(0,255,136,0.05); }
+  0%,100%{ box-shadow:0 0 0 3px rgba(0,255,163,0.18); }
+  50%    { box-shadow:0 0 0 7px rgba(0,255,163,0.04); }
 }
 
-/* ─── Camera ──────────────────────────────────────────────────────────────── */
-.camera-shell {
-  position: relative;
-  border-radius: 22px;
-  overflow: hidden;
-  background: #0d0d1a;
-  box-shadow:
-    0 0 0 1px rgba(108,99,255,0.25),
-    0 24px 64px rgba(0,0,0,0.7),
-    0 0 100px rgba(108,99,255,0.08);
-}
-
-.camera-shell img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 22px;
-}
-
-/* Scanning line overlay */
-.scan-line {
-  position: absolute;
-  left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(to right, transparent, rgba(108,99,255,0.5), transparent);
-  animation: scan 4s linear infinite;
-  pointer-events: none;
-  opacity: 0.4;
-}
-@keyframes scan {
-  from { top: 0%; }
-  to   { top: 100%; }
-}
-
-/* Corner accents */
-.corner {
-  position: absolute;
-  width: 20px; height: 20px;
-  border-color: rgba(108,99,255,0.5);
-  border-style: solid;
-  pointer-events: none;
-}
-.corner.tl { top:10px; left:10px;   border-width: 2px 0 0 2px; border-radius: 4px 0 0 0; }
-.corner.tr { top:10px; right:10px;  border-width: 2px 2px 0 0; border-radius: 0 4px 0 0; }
-.corner.bl { bottom:10px; left:10px;   border-width: 0 0 2px 2px; border-radius: 0 0 0 4px; }
-.corner.br { bottom:10px; right:10px;  border-width: 0 2px 2px 0; border-radius: 0 0 4px 0; }
-
-/* ─── Bottom panels ───────────────────────────────────────────────────────── */
-.panels {
+/* ── Main row: camera + 3D hand ── */
+.main-row {
   display: flex;
   gap: 14px;
   align-items: stretch;
+  width: 100%;
+  max-width: 900px;
 }
 
-/* Glass card base */
-.glass-card {
+/* Camera shell */
+.cam-shell {
+  flex: 1;
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #0b0b18;
+  box-shadow:
+    0 0 0 1px rgba(108,99,255,0.2),
+    0 20px 60px rgba(0,0,0,0.7),
+    0 0 80px rgba(108,99,255,0.07);
+}
+.cam-shell img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 20px;
+}
+
+/* Scan line */
+.scan { position:absolute; left:0; right:0; height:2px;
+  background:linear-gradient(to right, transparent, rgba(108,99,255,0.45), transparent);
+  animation: scanMove 5s linear infinite; opacity:0.35; pointer-events:none; }
+@keyframes scanMove { from{top:0} to{top:100%} }
+
+/* Corner brackets */
+.corner {
+  position: absolute;
+  width: 22px; height: 22px;
+  border-color: rgba(108,99,255,0.55);
+  border-style: solid;
+  pointer-events: none;
+}
+.tl{top:10px;left:10px;  border-width:2px 0 0 2px; border-radius:5px 0 0 0;}
+.tr{top:10px;right:10px; border-width:2px 2px 0 0; border-radius:0 5px 0 0;}
+.bl{bottom:10px;left:10px;  border-width:0 0 2px 2px; border-radius:0 0 0 5px;}
+.br{bottom:10px;right:10px; border-width:0 2px 2px 0; border-radius:0 0 5px 0;}
+
+/* ── 3D Hand panel ── */
+.hand3d-card {
+  width: 220px;
+  flex-shrink: 0;
   background: var(--glass);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 20px;
   backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  padding: 18px 20px;
-  transition: border-color 0.4s, box-shadow 0.4s;
-}
-.glass-card.lit {
-  border-color: rgba(108,99,255,0.4);
-  box-shadow: 0 0 40px rgba(108,99,255,0.1);
-}
-
-/* ── Voice card ── */
-.voice-card {
-  flex-shrink: 0;
-  width: 158px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: space-between;
+  padding: 14px 10px 12px;
   gap: 10px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.4s, box-shadow 0.4s;
+}
+.hand3d-card.lit {
+  border-color: rgba(0,217,255,0.3);
+  box-shadow: 0 0 40px rgba(0,217,255,0.08);
+}
+.hand3d-card.signing {
+  border-color: rgba(0,255,163,0.5);
+  box-shadow: 0 0 50px rgba(0,255,163,0.15);
+  animation: signingPulse 0.8s ease-in-out infinite alternate;
+}
+@keyframes signingPulse {
+  from { box-shadow: 0 0 30px rgba(0,255,163,0.1); }
+  to   { box-shadow: 0 0 60px rgba(0,255,163,0.25); }
 }
 
-.card-label {
-  font-size: 0.6rem;
-  color: rgba(255,255,255,0.3);
+/* STT zone */
+.stt-zone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 2px;
+}
+.stt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.stt-word {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.5);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+  transition: color 0.3s;
+}
+.stt-word.active { color: var(--green); font-style: normal; font-weight: 600; }
+
+/* File de signes à jouer */
+.sign-queue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 22px;
+}
+.sq-chip {
+  font-size: 0.62rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.04);
+  transition: all 0.25s;
+}
+.sq-chip.current {
+  background: rgba(0,255,163,0.2);
+  border-color: rgba(0,255,163,0.5);
+  color: var(--green);
+  font-weight: 700;
+  box-shadow: 0 0 8px rgba(0,255,163,0.3);
+}
+.sq-chip.done {
+  opacity: 0.25;
+  text-decoration: line-through;
+}
+
+.stt-sign {
+  font-size: 0.7rem;
+  color: var(--cyan);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.stt-sign.visible { opacity: 1; }
+
+/* Mic button */
+.mic-btn {
+  flex-shrink: 0;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: rgba(108,99,255,0.18);
+  border: 1px solid rgba(108,99,255,0.35);
+  color: rgba(255,255,255,0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.25s;
+}
+.mic-btn:hover { background: rgba(108,99,255,0.35); color: white; }
+.mic-btn.listening {
+  background: rgba(255,80,80,0.2);
+  border-color: rgba(255,80,80,0.5);
+  color: #ff6060;
+  animation: micPulse 1.2s ease-in-out infinite;
+}
+@keyframes micPulse {
+  0%,100%{ box-shadow:0 0 0 0   rgba(255,80,80,0.3); }
+  50%    { box-shadow:0 0 0 8px rgba(255,80,80,0); }
+}
+
+.panel-label {
+  font-size: 0.58rem;
+  color: rgba(255,255,255,0.28);
   text-transform: uppercase;
   letter-spacing: 1.8px;
   font-weight: 600;
+  align-self: flex-start;
+  padding-left: 4px;
 }
 
-/* SVG Equalizer bars */
-.eq-wrap {
-  position: relative;
-  width: 100%;
-  height: 52px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 5px;
+#handCanvas {
+  width: 196px;
+  height: 196px;
+  border-radius: 12px;
+  background: transparent;
 }
 
-.eq-bar {
-  flex: 1;
-  max-width: 12px;
-  border-radius: 6px;
-  min-height: 4px;
-  background: linear-gradient(to top, var(--purple), var(--cyan));
-  transform-origin: bottom center;
-  animation: eqIdle var(--dur, 1.8s) ease-in-out infinite var(--delay, 0s);
-  transition: box-shadow 0.3s;
-}
-
-@keyframes eqIdle {
-  0%, 100% { height: 4px; }
-  50%       { height: 14px; }
-}
-
-/* Speaking: fast + tall + glow */
-.eq-wrap.speaking .eq-bar {
-  animation-name: eqSpeak;
-  box-shadow: 0 0 12px rgba(108,99,255,0.7), 0 0 4px var(--cyan);
-}
-@keyframes eqSpeak {
-  0%, 100% { height: 10px; }
-  50%       { height: 48px; }
-}
-.eq-wrap.speaking .eq-bar { animation-duration: var(--spk-dur, 0.3s); }
-
-/* Post-speak: drop down */
-.eq-wrap.cooling .eq-bar {
-  animation: eqCool 0.7s ease-out forwards;
-  animation-duration: var(--cool-dur, 0.7s) !important;
-}
-@keyframes eqCool {
-  from { height: 48px; }
-  to   { height: 4px; }
-}
-
-/* Individual bar timing */
-.eq-bar:nth-child(1) { --dur:1.9s; --delay:0.00s; --spk-dur:0.30s; --cool-dur:0.60s; }
-.eq-bar:nth-child(2) { --dur:1.5s; --delay:0.12s; --spk-dur:0.24s; --cool-dur:0.55s; }
-.eq-bar:nth-child(3) { --dur:2.1s; --delay:0.28s; --spk-dur:0.36s; --cool-dur:0.65s; }
-.eq-bar:nth-child(4) { --dur:1.7s; --delay:0.08s; --spk-dur:0.28s; --cool-dur:0.58s; }
-.eq-bar:nth-child(5) { --dur:1.4s; --delay:0.20s; --spk-dur:0.22s; --cool-dur:0.50s; }
-.eq-bar:nth-child(6) { --dur:1.8s; --delay:0.35s; --spk-dur:0.34s; --cool-dur:0.62s; }
-.eq-bar:nth-child(7) { --dur:2.0s; --delay:0.05s; --spk-dur:0.26s; --cool-dur:0.56s; }
-.eq-bar:nth-child(8) { --dur:1.6s; --delay:0.42s; --spk-dur:0.32s; --cool-dur:0.68s; }
-.eq-bar:nth-child(9) { --dur:1.9s; --delay:0.16s; --spk-dur:0.27s; --cool-dur:0.53s; }
-
-.speak-status {
+.hand3d-status {
   font-size: 0.62rem;
-  color: rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.2);
   letter-spacing: 0.5px;
   transition: color 0.3s;
-  text-align: center;
+  align-self: flex-start;
+  padding-left: 4px;
 }
-.speak-status.active { color: var(--cyan); }
+.hand3d-status.on { color: var(--cyan); }
 
-/* ── Prediction card ── */
+/* ── Bottom panels ── */
+.bottom-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  max-width: 900px;
+}
+
+.glass-card {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  backdrop-filter: blur(24px);
+  padding: 15px 18px;
+  transition: border-color 0.4s, box-shadow 0.4s;
+}
+.glass-card.lit {
+  border-color: rgba(108,99,255,0.38);
+  box-shadow: 0 0 35px rgba(108,99,255,0.09);
+}
+
+/* Voice card */
+.voice-card {
+  flex-shrink: 0;
+  width: 154px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+}
+
+.eq-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 48px;
+  width: 100%;
+  justify-content: center;
+}
+.eq-bar {
+  flex: 1;
+  max-width: 11px;
+  min-height: 4px;
+  border-radius: 5px;
+  background: linear-gradient(to top, var(--purple), var(--cyan));
+  animation: eqIdle var(--dur,1.8s) ease-in-out infinite var(--delay,0s);
+}
+@keyframes eqIdle {
+  0%,100%{ height:4px; }
+  50%    { height:12px; }
+}
+.eq-wrap.speaking .eq-bar {
+  animation-name: eqSpeak;
+  box-shadow: 0 0 10px rgba(108,99,255,0.7);
+}
+@keyframes eqSpeak {
+  0%,100%{ height:8px; }
+  50%    { height:44px; }
+}
+.eq-wrap.cooling .eq-bar {
+  animation: eqCool 0.7s ease-out forwards;
+}
+@keyframes eqCool { from{height:44px} to{height:4px} }
+
+.eq-bar:nth-child(1){--dur:1.9s;--delay:0.00s;}
+.eq-bar:nth-child(2){--dur:1.5s;--delay:0.12s;}
+.eq-bar:nth-child(3){--dur:2.1s;--delay:0.28s;}
+.eq-bar:nth-child(4){--dur:1.7s;--delay:0.08s;}
+.eq-bar:nth-child(5){--dur:1.4s;--delay:0.20s;}
+.eq-bar:nth-child(6){--dur:1.8s;--delay:0.35s;}
+.eq-bar:nth-child(7){--dur:2.0s;--delay:0.05s;}
+.eq-bar:nth-child(8){--dur:1.6s;--delay:0.42s;}
+.eq-bar:nth-child(9){--dur:1.9s;--delay:0.16s;}
+.eq-wrap.speaking .eq-bar:nth-child(1){animation-duration:0.28s;}
+.eq-wrap.speaking .eq-bar:nth-child(2){animation-duration:0.22s;}
+.eq-wrap.speaking .eq-bar:nth-child(3){animation-duration:0.34s;}
+.eq-wrap.speaking .eq-bar:nth-child(4){animation-duration:0.26s;}
+.eq-wrap.speaking .eq-bar:nth-child(5){animation-duration:0.20s;}
+.eq-wrap.speaking .eq-bar:nth-child(6){animation-duration:0.32s;}
+.eq-wrap.speaking .eq-bar:nth-child(7){animation-duration:0.24s;}
+.eq-wrap.speaking .eq-bar:nth-child(8){animation-duration:0.36s;}
+.eq-wrap.speaking .eq-bar:nth-child(9){animation-duration:0.25s;}
+
+.speak-lbl {
+  font-size: 0.6rem;
+  color: rgba(255,255,255,0.25);
+  letter-spacing: 0.4px;
+  transition: color 0.3s;
+}
+.speak-lbl.on { color: var(--cyan); }
+
+/* Prediction card */
 .pred-card {
   flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 10px;
-  min-height: 110px;
+  gap: 8px;
+  min-height: 100px;
 }
-
 .pred-word {
-  font-size: 2.4rem;
+  font-size: 2.3rem;
   font-weight: 800;
   letter-spacing: -1.5px;
-  line-height: 1;
-  background: linear-gradient(135deg, #a78bfa 0%, #38bdf8 60%, #34d399 100%);
+  background: linear-gradient(135deg, #a78bfa, #38bdf8 55%, #34d399);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  transition: opacity 0.2s;
-  min-height: 2.6rem;
-  animation: wordIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: wordIn 0.28s cubic-bezier(0.34,1.56,0.64,1) both;
+  min-height: 2.5rem;
+  line-height: 1;
 }
 @keyframes wordIn {
-  from { opacity: 0; transform: translateY(6px) scale(0.95); }
-  to   { opacity: 1; transform: translateY(0)   scale(1); }
+  from{ opacity:0; transform:translateY(8px) scale(0.92); }
+  to  { opacity:1; transform:translateY(0)   scale(1); }
 }
-
 .pred-word.empty {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 400;
   background: none;
-  -webkit-text-fill-color: rgba(255,255,255,0.18);
-  letter-spacing: 0;
+  -webkit-text-fill-color: rgba(255,255,255,0.16);
   animation: none;
+  letter-spacing: 0;
 }
+.bar-row { display:flex; align-items:center; gap:8px; }
+.bar-tag { font-size:0.57rem; color:rgba(255,255,255,0.22); text-transform:uppercase; letter-spacing:1px; width:28px; flex-shrink:0; }
+.bar-track { flex:1; height:3px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden; }
+.bar-fill { height:100%; border-radius:2px; transition:width 0.3s ease; width:0%; }
+.bar-fill.conf { background:linear-gradient(to right,var(--purple),var(--cyan)); }
+.bar-fill.stab { background:linear-gradient(to right,var(--cyan),var(--green)); }
+.bar-pct { font-size:0.6rem; color:rgba(255,255,255,0.28); font-variant-numeric:tabular-nums; width:26px; text-align:right; flex-shrink:0; }
 
-.bars-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.bar-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.bar-tag {
-  font-size: 0.58rem;
-  color: rgba(255,255,255,0.25);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  width: 30px;
-  flex-shrink: 0;
-}
-.bar-track {
-  flex: 1;
-  height: 4px;
-  background: rgba(255,255,255,0.07);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s ease;
-  width: 0%;
-}
-.bar-fill.conf  { background: linear-gradient(to right, var(--purple), var(--cyan)); }
-.bar-fill.stab  { background: linear-gradient(to right, var(--cyan), #34d399); }
-.bar-pct {
-  font-size: 0.62rem;
-  color: rgba(255,255,255,0.3);
-  font-variant-numeric: tabular-nums;
-  width: 28px;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-/* ─── Sentence history ────────────────────────────────────────────────────── */
+/* Sentence row */
 .sentence-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  min-height: 38px;
-  padding: 10px 16px;
+  min-height: 36px;
+  padding: 9px 14px;
   background: var(--glass);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   backdrop-filter: blur(20px);
+  width: 100%;
+  max-width: 900px;
 }
-
-.sent-label {
-  font-size: 0.58rem;
-  color: rgba(255,255,255,0.25);
-  text-transform: uppercase;
-  letter-spacing: 1.8px;
-  font-weight: 600;
-  flex-shrink: 0;
-  margin-right: 4px;
-}
-
-.chip {
+.sent-lbl { font-size:0.57rem; color:rgba(255,255,255,0.22); text-transform:uppercase; letter-spacing:1.8px; font-weight:600; flex-shrink:0; margin-right:4px; }
+.wchip {
   background: rgba(108,99,255,0.18);
   border: 1px solid rgba(108,99,255,0.25);
   border-radius: 20px;
-  padding: 3px 12px;
-  font-size: 0.82rem;
+  padding: 2px 11px;
+  font-size: 0.8rem;
   color: rgba(255,255,255,0.8);
-  animation: chipPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  cursor: default;
-  transition: background 0.2s;
+  animation: chipPop 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
 }
-.chip:hover { background: rgba(108,99,255,0.3); }
-.chip.latest {
-  background: rgba(108,99,255,0.38);
-  border-color: rgba(108,99,255,0.55);
-  color: white;
-  font-weight: 600;
-}
+.wchip.latest { background:rgba(108,99,255,0.38); border-color:rgba(108,99,255,0.55); color:#fff; font-weight:600; }
 @keyframes chipPop {
-  from { opacity:0; transform: scale(0.6) translateY(4px); }
-  to   { opacity:1; transform: scale(1)   translateY(0); }
+  from{opacity:0;transform:scale(0.6) translateY(4px);}
+  to  {opacity:1;transform:scale(1)   translateY(0);}
 }
-
-.sent-empty {
-  font-size: 0.82rem;
-  color: rgba(255,255,255,0.15);
-  font-style: italic;
-}
-
+.sent-empty { font-size:0.8rem; color:rgba(255,255,255,0.13); font-style:italic; }
 .clear-btn {
-  margin-left: auto;
-  flex-shrink: 0;
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 8px;
-  padding: 3px 10px;
-  color: rgba(255,255,255,0.25);
-  font-size: 0.65rem;
-  cursor: pointer;
-  letter-spacing: 0.5px;
-  transition: all 0.2s;
+  margin-left:auto; flex-shrink:0;
+  background:transparent; border:1px solid rgba(255,255,255,0.09);
+  border-radius:7px; padding:2px 9px;
+  color:rgba(255,255,255,0.22); font-size:0.62rem; cursor:pointer;
+  transition:all 0.2s; letter-spacing:0.4px;
 }
-.clear-btn:hover {
-  background: rgba(255,80,80,0.08);
-  border-color: rgba(255,80,80,0.3);
-  color: rgba(255,120,120,0.8);
-}
+.clear-btn:hover { background:rgba(255,60,60,0.07); border-color:rgba(255,80,80,0.3); color:rgba(255,110,110,0.8); }
 </style>
 </head>
 <body>
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
 <div class="app">
 
-  <!-- ── Header ── -->
+  <!-- Header -->
   <div class="header">
     <div class="brand">
-      <!-- Hand logo SVG -->
-      <svg class="brand-icon" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#6C63FF"/>
-            <stop offset="100%" stop-color="#00D9FF"/>
-          </linearGradient>
-        </defs>
-        <rect width="38" height="38" rx="11" fill="rgba(108,99,255,0.14)"/>
-        <path d="M19 7C19 5.9 18.1 5 17 5S15 5.9 15 7V19" stroke="url(#logoGrad)" stroke-width="2.2" stroke-linecap="round"/>
-        <path d="M22.5 8.5C22.5 7.4 21.6 6.5 20.5 6.5S18.5 7.4 18.5 8.5V19" stroke="url(#logoGrad)" stroke-width="2.2" stroke-linecap="round"/>
-        <path d="M26 11C26 9.9 25.1 9 24 9S22 9.9 22 11V19" stroke="url(#logoGrad)" stroke-width="2.2" stroke-linecap="round"/>
-        <path d="M15 12.5C15 11.4 14.1 10.5 13 10.5S11 11.4 11 12.5V19" stroke="url(#logoGrad)" stroke-width="2.2" stroke-linecap="round"/>
-        <path d="M11 19Q10 23 10 27H28Q28 23 27 20L11 19Z" fill="url(#logoGrad)" opacity="0.85"/>
+      <svg class="brand-icon" viewBox="0 0 36 36" fill="none">
+        <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#6C63FF"/><stop offset="100%" stop-color="#00D9FF"/>
+        </linearGradient></defs>
+        <rect width="36" height="36" rx="10" fill="rgba(108,99,255,0.14)"/>
+        <path d="M18 7C18 5.9 17.1 5 16 5S14 5.9 14 7V18" stroke="url(#lg)" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M21.5 8C21.5 6.9 20.6 6 19.5 6S17.5 6.9 17.5 8V18" stroke="url(#lg)" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M25 10.5C25 9.4 24.1 8.5 23 8.5S21 9.4 21 10.5V18" stroke="url(#lg)" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M14.5 12C14.5 10.9 13.6 10 12.5 10S10.5 10.9 10.5 12V18" stroke="url(#lg)" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M10.5 18Q9.5 22 9.5 26H26.5Q26.5 22 25.5 19L10.5 18Z" fill="url(#lg)" opacity="0.85"/>
       </svg>
-      <span class="brand-name">SignTranslate</span>
+      <span class="brand-name">SignTranslate AR</span>
     </div>
-    <div class="header-meta">
-      <span class="fps-chip" id="fpsDisplay">-- FPS</span>
-      <div class="status-dot" id="statusDot" title="Main détectée"></div>
+    <div class="header-right">
+      <span class="chip" id="fpsDisplay">-- FPS</span>
+      <div class="dot" id="dot"></div>
     </div>
   </div>
 
-  <!-- ── Camera ── -->
-  <div class="camera-shell">
-    <img src="/video_feed" alt="Flux webcam"/>
-    <div class="scan-line"></div>
-    <div class="corner tl"></div>
-    <div class="corner tr"></div>
-    <div class="corner bl"></div>
-    <div class="corner br"></div>
-  </div>
+  <!-- Main row: camera + 3D hand -->
+  <div class="main-row">
 
-  <!-- ── Bottom panels ── -->
-  <div class="panels">
+    <!-- Camera -->
+    <div class="cam-shell">
+      <img src="/video_feed" alt="Flux caméra AR"/>
+      <div class="scan"></div>
+      <div class="corner tl"></div><div class="corner tr"></div>
+      <div class="corner bl"></div><div class="corner br"></div>
+    </div>
 
-    <!-- Voice card -->
-    <div class="glass-card voice-card" id="voiceCard">
-      <div class="card-label">Synthèse vocale</div>
+    <!-- 3D Hand hologram -->
+    <div class="hand3d-card" id="hand3dCard">
+      <span class="panel-label">Hologramme 3D</span>
+      <canvas id="handCanvas" width="196" height="196"></canvas>
+      <span class="hand3d-status" id="hand3dStatus">En attente de main…</span>
 
-      <!-- Equalizer SVG-style avec divs animés -->
-      <div class="eq-wrap" id="eqWrap">
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
+      <!-- STT zone -->
+      <div class="stt-zone">
+        <div class="stt-row">
+          <span class="stt-word" id="sttWord">Micro inactif</span>
+          <button class="mic-btn" id="micBtn" onclick="toggleMic()" title="Activer le micro">🎤</button>
+        </div>
+        <div class="sign-queue" id="signQueue"></div>
+        <span class="stt-sign" id="sttSign"></span>
       </div>
 
-      <div class="speak-status" id="speakStatus">En attente</div>
     </div>
 
-    <!-- Prediction card -->
+  </div>
+
+  <!-- Bottom panels -->
+  <div class="bottom-row">
+
+    <!-- Voice equalizer -->
+    <div class="glass-card voice-card" id="voiceCard">
+      <span class="panel-label">Synthèse vocale</span>
+      <div class="eq-wrap" id="eqWrap">
+        <div class="eq-bar"></div><div class="eq-bar"></div><div class="eq-bar"></div>
+        <div class="eq-bar"></div><div class="eq-bar"></div><div class="eq-bar"></div>
+        <div class="eq-bar"></div><div class="eq-bar"></div><div class="eq-bar"></div>
+      </div>
+      <span class="speak-lbl" id="speakLbl">En attente</span>
+    </div>
+
+    <!-- Prediction -->
     <div class="glass-card pred-card" id="predCard">
-      <div class="card-label">Signe détecté</div>
+      <span class="panel-label">Signe détecté</span>
       <div class="pred-word empty" id="predWord">Montrez votre main…</div>
-      <div class="bars-stack">
+      <div style="display:flex;flex-direction:column;gap:5px;">
         <div class="bar-row">
           <span class="bar-tag">Conf</span>
           <div class="bar-track"><div class="bar-fill conf" id="confFill"></div></div>
@@ -517,52 +566,472 @@ body::after {
 
   </div>
 
-  <!-- ── Sentence history ── -->
-  <div class="sentence-row" id="sentenceRow">
-    <span class="sent-label">Phrase</span>
+  <!-- Sentence history -->
+  <div class="sentence-row" id="sentRow">
+    <span class="sent-lbl">Phrase</span>
     <span class="sent-empty">—</span>
     <button class="clear-btn" onclick="clearSentence()">Effacer</button>
   </div>
 
 </div>
 
+<!-- Three.js -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <!-- Socket.IO -->
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
 <script>
+/* ═══════════════════════════════════════════════════════════
+   THREE.JS — Hologramme 3D de la main
+═══════════════════════════════════════════════════════════ */
+const canvas3d = document.getElementById('handCanvas');
+const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, alpha: true, antialias: true });
+renderer.setSize(196, 196);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setClearColor(0x000000, 0);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 10);
+camera.position.set(0, 0, 2.0);
+
+/* Connexions de la main (mêmes que MediaPipe) */
+const CONN = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [0,9],[9,10],[10,11],[11,12],
+  [0,13],[13,14],[14,15],[15,16],
+  [0,17],[17,18],[18,19],[19,20],
+  [5,9],[9,13],[13,17]
+];
+
+/* Matériaux */
+const lineMat = new THREE.LineBasicMaterial({
+  color: 0x6C63FF, transparent: true, opacity: 0.9
+});
+const glowMat = new THREE.LineBasicMaterial({
+  color: 0x9C93FF, transparent: true, opacity: 0.25,
+  blending: THREE.AdditiveBlending
+});
+
+/* Géométrie des lignes */
+const linePos  = new Float32Array(CONN.length * 2 * 3);
+const lineGeo  = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+const lines     = new THREE.LineSegments(lineGeo, lineMat);
+const glowLines = new THREE.LineSegments(lineGeo, glowMat);
+scene.add(lines);
+scene.add(glowLines);
+
+/* Joints (sphères) */
+const joints = [];
+const JOINT_COLORS = {
+  0: 0xFF6B9D,   // poignet – rose
+  4: 0x00FFAA,   // bout pouce
+  8: 0x00D9FF,   // bout index
+  12:0x00D9FF,   // bout majeur
+  16:0xFFD700,   // bout annulaire
+  20:0xFF6B9D,   // bout auriculaire
+};
+const geoS  = new THREE.SphereGeometry(0.028, 10, 10);
+const geoSS = new THREE.SphereGeometry(0.018, 8, 8);
+for (let i = 0; i < 21; i++) {
+  const col = JOINT_COLORS[i] || 0x8080FF;
+  const geo = [0,4,8,12,16,20].includes(i) ? geoS : geoSS;
+  const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95 });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+  joints.push(mesh);
+}
+
+/* Anneau de plateforme */
+const ringGeo = new THREE.RingGeometry(0.55, 0.62, 64);
+const ringMat = new THREE.MeshBasicMaterial({
+  color: 0x6C63FF, transparent: true, opacity: 0.22,
+  side: THREE.DoubleSide, blending: THREE.AdditiveBlending
+});
+const ring = new THREE.Mesh(ringGeo, ringMat);
+ring.rotation.x = -Math.PI / 2;
+ring.position.y = -0.82;
+scene.add(ring);
+
+/* Orbe idle (tourne quand pas de main) */
+const orbGeo = new THREE.IcosahedronGeometry(0.35, 1);
+const orbMat = new THREE.MeshBasicMaterial({
+  color: 0x4040AA, wireframe: true, transparent: true, opacity: 0.18
+});
+const orb = new THREE.Mesh(orbGeo, orbMat);
+scene.add(orb);
+
+/* ── Positions & état ── */
+const curPos    = Array.from({ length: 21 }, () => new THREE.Vector3());
+let hasHand     = false;
+let idleT       = 0;
+
+/* ── Sign pose (STT → hologramme) ── */
+let signPoses   = {};         // chargé depuis /sign_poses
+let signTarget  = null;       // Array<THREE.Vector3> | null
+let signLabel   = '';
+let signTimer   = null;
+const SIGN_HOLD = 2400;       // ms pendant lesquels la pose est maintenue
+
+fetch('/sign_poses')
+  .then(r => r.json())
+  .then(data => {
+    signPoses = data;
+    console.log('Poses chargées :', Object.keys(data));
+  });
+
+function triggerSign(sign) {
+  const raw = signPoses[sign];
+  if (!raw) { console.warn('Pose inconnue :', sign); return; }
+
+  /* Coords CSV normalisées → espace Three.js
+     (wrist à l'origine, x/y dans [-1,1], on scale + flip Y) */
+  signTarget = raw.map(([x, y, z]) =>
+    new THREE.Vector3(x * 0.65, -y * 0.65, z * 0.3)
+  );
+  signLabel = sign;
+
+  /* Couleur lignes → vert néon pendant la pose */
+  lineMat.color.setHex(0x00FFA3);
+  lineMat.opacity = 1.0;
+  glowMat.color.setHex(0x00FFA3);
+  ring.material.color.setHex(0x00FFA3);
+
+  clearTimeout(signTimer);
+  signTimer = setTimeout(() => {
+    signTarget = null;
+    signLabel  = '';
+    lineMat.color.setHex(0x6C63FF);
+    lineMat.opacity = 0.9;
+    glowMat.color.setHex(0x9C93FF);
+    ring.material.color.setHex(0x6C63FF);
+    hand3dCard.classList.remove('signing');
+    sttSign.classList.remove('visible');
+    sttSign.textContent = '→ —';
+  }, SIGN_HOLD);
+
+  hand3dCard.classList.add('signing');
+  hand3dCard.classList.remove('lit');
+  sttSign.textContent = `→ ${sign}`;
+  sttSign.classList.add('visible');
+}
+
+function updateLinesFromCurPos() {
+  CONN.forEach(([a, b], i) => {
+    const p = curPos[a], q = curPos[b];
+    linePos[i*6+0]=p.x; linePos[i*6+1]=p.y; linePos[i*6+2]=p.z;
+    linePos[i*6+3]=q.x; linePos[i*6+4]=q.y; linePos[i*6+5]=q.z;
+  });
+  lineGeo.attributes.position.needsUpdate = true;
+}
+
+function updateHandLandmarks(landmarks) {
+  if (signTarget) return; // pose STT prioritaire sur flux live
+
+  hasHand = landmarks && landmarks.length === 21;
+  orb.visible = !hasHand;
+  if (!hasHand) return;
+
+  for (let i = 0; i < 21; i++) {
+    const lm = landmarks[i];
+    curPos[i].lerp(new THREE.Vector3(
+      (lm.x - 0.5) *  1.5,
+      (lm.y - 0.5) * -1.5,
+       lm.z        * -0.6
+    ), 0.35);
+    joints[i].position.copy(curPos[i]);
+  }
+  updateLinesFromCurPos();
+}
+
+/* Animation loop */
+function animate3d() {
+  requestAnimationFrame(animate3d);
+  idleT += 0.012;
+
+  if (signTarget) {
+    /* ── Mode signe STT : lerp vers la pose ── */
+    orb.visible = false;
+    for (let i = 0; i < 21; i++) {
+      curPos[i].lerp(signTarget[i], 0.07);
+      joints[i].position.copy(curPos[i]);
+    }
+    updateLinesFromCurPos();
+    scene.position.y = Math.sin(idleT * 1.5) * 0.018;
+    scene.rotation.y = Math.sin(idleT * 0.6) * 0.06;
+    scene.rotation.x = 0;
+    ring.material.opacity = 0.35 + Math.sin(idleT * 3) * 0.12;
+
+  } else if (!hasHand) {
+    /* ── Idle : orbe flottant ── */
+    orb.rotation.y += 0.008;
+    orb.rotation.x += 0.004;
+    scene.position.y = Math.sin(idleT) * 0.04;
+    scene.rotation.y = Math.sin(idleT * 0.4) * 0.15;
+    scene.rotation.x = Math.cos(idleT * 0.3) * 0.08;
+    ring.material.opacity = 0.15 + Math.sin(idleT * 1.5) * 0.07;
+
+  } else {
+    /* ── Main live : légère oscillation ── */
+    scene.position.y = Math.sin(idleT * 0.8) * 0.012;
+    scene.rotation.y = Math.sin(idleT * 0.3) * 0.04;
+    scene.rotation.x = Math.cos(idleT * 0.2) * 0.02;
+    ring.material.opacity = 0.28 + Math.sin(idleT * 2) * 0.08;
+  }
+
+  ring.rotation.z += 0.003;
+  renderer.render(scene, camera);
+}
+animate3d();
+
+
+/* ═══════════════════════════════════════════════════════════
+   SOCKET.IO — État temps réel
+═══════════════════════════════════════════════════════════ */
 const socket = io();
 
-const eqWrap     = document.getElementById('eqWrap');
-const predWord   = document.getElementById('predWord');
-const predCard   = document.getElementById('predCard');
-const voiceCard  = document.getElementById('voiceCard');
-const confFill   = document.getElementById('confFill');
-const confPct    = document.getElementById('confPct');
-const stabFill   = document.getElementById('stabFill');
-const stabPct    = document.getElementById('stabPct');
-const sentRow    = document.getElementById('sentenceRow');
-const fpsDisplay = document.getElementById('fpsDisplay');
-const statusDot  = document.getElementById('statusDot');
-const speakStatus= document.getElementById('speakStatus');
+const eqWrap    = document.getElementById('eqWrap');
+const predWord  = document.getElementById('predWord');
+const predCard  = document.getElementById('predCard');
+const confFill  = document.getElementById('confFill');
+const confPct   = document.getElementById('confPct');
+const stabFill  = document.getElementById('stabFill');
+const stabPct   = document.getElementById('stabPct');
+const sentRow   = document.getElementById('sentRow');
+const fpsDsp    = document.getElementById('fpsDisplay');
+const dot       = document.getElementById('dot');
+const speakLbl  = document.getElementById('speakLbl');
+const hand3dCard= document.getElementById('hand3dCard');
+const hand3dSt  = document.getElementById('hand3dStatus');
+const micBtn    = document.getElementById('micBtn');
+const sttWordEl = document.getElementById('sttWord');
+const sttSign   = document.getElementById('sttSign');
 
-let speakTimer = null;
-let lastWord   = '';
+let speakTimer  = null;
+let lastWord    = '';
 
-socket.on('state', (d) => {
+/* ═══════════════════════════════════════════════════════════
+   WEB SPEECH API — Phrase → séquence de signes hologramme
+═══════════════════════════════════════════════════════════ */
 
-  // FPS
-  fpsDisplay.textContent = `${d.fps} FPS`;
+/* Mapping mot anglais → label de signe connu.
+   Couvre bigrams ("thank you") ET mots isolés. */
+const WORD_TO_SIGN = {
+  // Lettres A → Z (épellation)
+  'a':'A','b':'B','c':'C','d':'D','e':'E','f':'F','g':'G','h':'H','i':'I',
+  'j':'J','k':'K','l':'L','m':'M','n':'N','o':'O','p':'P','q':'Q','r':'R',
+  's':'S','t':'T','u':'U','v':'V','w':'W','x':'X','y':'Y','z':'Z',
+  // Chiffres écrits
+  'zero':'Z','one':'A','two':'B','three':'C','four':'D','five':'F',
+  // Salutations
+  'hello':'hello','hi':'hello','hey':'hello','greetings':'hello',
+  'goodbye':'goodbye','bye':'goodbye','see you':'goodbye',
+  // Affirmations / négations
+  'yes':'yes','yeah':'yes','yep':'yes','sure':'yes','okay':'yes','ok':'yes','alright':'yes',
+  'no':'no','nope':'no','nah':'no','not':'no','never':'no',
+  // Politesse
+  'thanks':'thanks','thank':'thanks','thank you':'thanks',
+  'please':'please','kindly':'please','sorry':'sorry','excuse me':'sorry',
+  // Questions courantes
+  'what':'what','where':'where','when':'when','who':'who','why':'why','how':'how',
+  'help':'help','need help':'help','i need help':'help',
+  // Émotions / états
+  'good':'good','fine':'good','great':'good','wonderful':'good',
+  'bad':'bad','sad':'bad','tired':'bad',
+  'happy':'happy','love':'love','like':'love',
+  // Actions courantes
+  'eat':'eat','food':'eat','hungry':'eat',
+  'drink':'drink','water':'drink','thirsty':'drink',
+  'stop':'stop','wait':'wait','go':'go','come':'come',
+  'sit':'sit','stand':'stand','walk':'walk','run':'run',
+  // Personnes
+  'i':'I','me':'I','my':'I',
+  'you':'Y','your':'Y',
+  'friend':'F','family':'F',
+  'mother':'M','mom':'M','father':'F','dad':'D',
+  // Divers utiles
+  'more':'M','again':'A','finish':'F','done':'D','ready':'R',
+  'name':'N','call':'C','phone':'P','home':'H','school':'S','work':'W',
+};
 
-  // Hand dot
-  statusDot.classList.toggle('active', d.hand_detected);
+/* ── File d'attente de signes ───────────────────────────── */
+let signQueue      = [];   // labels restants à jouer
+let signQueueFull  = [];   // copie complète pour affichage
+let isChaining     = false;
 
-  // Confidence + stability bars
+const signQueueEl  = document.getElementById('signQueue');
+
+function parsePhrase(transcript) {
+  /* Découpe la phrase en mots, cherche des bigrams puis des mots simples.
+     Retourne un tableau ordonné de labels de signes trouvés. */
+  const words  = transcript.toLowerCase().replace(/[^a-z\s]/g, '').trim().split(/\s+/);
+  const result = [];
+  let i = 0;
+  while (i < words.length) {
+    // Essai bigram (ex: "thank you")
+    if (i < words.length - 1) {
+      const bigram = words[i] + ' ' + words[i+1];
+      if (WORD_TO_SIGN[bigram]) {
+        result.push(WORD_TO_SIGN[bigram]);
+        i += 2;
+        continue;
+      }
+    }
+    // Mot simple
+    if (WORD_TO_SIGN[words[i]]) {
+      result.push(WORD_TO_SIGN[words[i]]);
+    }
+    i++;
+  }
+  // Déduplique les signes consécutifs identiques
+  return result.filter((s, idx) => idx === 0 || s !== result[idx-1]);
+}
+
+function renderQueue(queue, currentIdx) {
+  if (!queue.length) { signQueueEl.innerHTML = ''; return; }
+  signQueueEl.innerHTML = queue.map((s, i) => {
+    let cls = 'sq-chip';
+    if (i < currentIdx)        cls += ' done';
+    else if (i === currentIdx) cls += ' current';
+    return `<span class="${cls}">${s}</span>`;
+  }).join('');
+}
+
+function playNext() {
+  if (signQueue.length === 0) {
+    isChaining = false;
+    sttSign.textContent = '';
+    sttSign.classList.remove('visible');
+    renderQueue([], 0);
+    return;
+  }
+  isChaining = true;
+  const sign     = signQueue.shift();
+  const doneIdx  = signQueueFull.length - signQueue.length - 1;
+  renderQueue(signQueueFull, doneIdx);
+  sttSign.textContent = `→ ${sign}`;
+  sttSign.classList.add('visible');
+  triggerSign(sign, playNext);   // callback → signe suivant après SIGN_HOLD
+}
+
+function triggerChain(signs) {
+  if (!signs.length) return;
+  clearTimeout(signTimer);        // annule tout signe en cours
+  signTarget     = null;
+  signQueue      = [...signs];
+  signQueueFull  = [...signs];
+  playNext();
+}
+
+/* ── triggerSign accepte un callback onComplete ─────────── */
+/* (redéfini ici pour surcharger la version précédente)      */
+function triggerSign(sign, onComplete) {
+  const raw = signPoses[sign];
+  if (!raw) {
+    console.warn('Pose inconnue :', sign);
+    if (onComplete) setTimeout(onComplete, 200);
+    return;
+  }
+  signTarget = raw.map(([x, y, z]) =>
+    new THREE.Vector3(x * 0.65, -y * 0.65, z * 0.3)
+  );
+  signLabel = sign;
+  lineMat.color.setHex(0x00FFA3);  lineMat.opacity = 1.0;
+  glowMat.color.setHex(0x00FFA3);
+  ring.material.color.setHex(0x00FFA3);
+
+  hand3dCard.classList.add('signing');
+  hand3dCard.classList.remove('lit');
+
+  clearTimeout(signTimer);
+  signTimer = setTimeout(() => {
+    signTarget = null;
+    signLabel  = '';
+    lineMat.color.setHex(0x6C63FF); lineMat.opacity = 0.9;
+    glowMat.color.setHex(0x9C93FF);
+    ring.material.color.setHex(0x6C63FF);
+    if (!signQueue.length) hand3dCard.classList.remove('signing');
+    if (onComplete) onComplete();
+  }, SIGN_HOLD);
+}
+
+/* ── Micro ─────────────────────────────────────────────── */
+let recognition = null;
+let micActive   = false;
+
+function toggleMic() { micActive ? stopMic() : startMic(); }
+
+function startMic() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) {
+    alert('Web Speech API non supportée — utilisez Chrome ou Edge.');
+    return;
+  }
+  recognition = new SpeechRec();
+  recognition.continuous      = true;
+  recognition.interimResults  = true;
+  recognition.lang            = 'en-US';
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event) => {
+    const res        = event.results[event.results.length - 1];
+    const transcript = res[0].transcript.toLowerCase().trim();
+    const isFinal    = res.isFinal;
+
+    sttWordEl.textContent = `"${transcript}"`;
+    sttWordEl.classList.toggle('active', isFinal);
+
+    if (!isFinal) return;
+
+    const signs = parsePhrase(transcript);
+    if (signs.length) {
+      triggerChain(signs);
+    }
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error !== 'no-speech') console.warn('STT:', e.error);
+  };
+  recognition.onend = () => { if (micActive) recognition.start(); };
+
+  recognition.start();
+  micActive = true;
+  micBtn.classList.add('listening');
+  micBtn.textContent    = '🔴';
+  sttWordEl.textContent = 'Écoute en cours…';
+}
+
+function stopMic() {
+  micActive = false;
+  if (recognition) { recognition.stop(); recognition = null; }
+  micBtn.classList.remove('listening');
+  micBtn.textContent    = '🎤';
+  sttWordEl.textContent = 'Micro inactif';
+  sttWordEl.classList.remove('active');
+}
+
+socket.on('state', d => {
+  /* FPS */
+  fpsDsp.textContent = `${d.fps} FPS`;
+
+  /* Dot main détectée */
+  dot.classList.toggle('on', d.hand_detected);
+
+  /* 3D hand */
+  updateHandLandmarks(d.landmarks);
+  hand3dCard.classList.toggle('lit', d.hand_detected);
+  hand3dSt.textContent  = d.hand_detected ? (d.prediction || 'Main détectée') : 'En attente de main…';
+  hand3dSt.classList.toggle('on', d.hand_detected);
+
+  /* Barres */
   confFill.style.width = `${d.confidence}%`;
   confPct.textContent  = `${d.confidence}%`;
-  const stabPct100 = Math.round((d.stable_progress || 0) * 100);
-  stabFill.style.width = `${stabPct100}%`;
-  stabPct.textContent  = `${stabPct100}%`;
+  const sp = Math.round((d.stable_progress || 0) * 100);
+  stabFill.style.width = `${sp}%`;
+  stabPct.textContent  = `${sp}%`;
 
-  // Prediction word (re-animate only on change)
+  /* Mot prédit */
   if (d.prediction && d.prediction !== lastWord) {
     lastWord = d.prediction;
     predWord.classList.remove('empty');
@@ -572,47 +1041,43 @@ socket.on('state', (d) => {
       predWord.textContent = d.prediction;
     });
     predCard.classList.add('lit');
-    voiceCard.classList.add('lit');
   } else if (!d.prediction) {
     predWord.textContent = 'Montrez votre main…';
     predWord.classList.add('empty');
     predCard.classList.remove('lit');
-    voiceCard.classList.remove('lit');
     lastWord = '';
   }
 
-  // Speaking animation
+  /* Égaliseur vocal */
   if (d.speaking) {
     eqWrap.classList.remove('cooling');
     eqWrap.classList.add('speaking');
-    speakStatus.textContent = 'Synthèse vocale…';
-    speakStatus.classList.add('active');
-
+    speakLbl.textContent = 'Synthèse en cours…';
+    speakLbl.classList.add('on');
     clearTimeout(speakTimer);
     speakTimer = setTimeout(() => {
       eqWrap.classList.remove('speaking');
       eqWrap.classList.add('cooling');
-      speakStatus.textContent = 'En attente';
-      speakStatus.classList.remove('active');
+      speakLbl.textContent = 'En attente';
+      speakLbl.classList.remove('on');
       setTimeout(() => eqWrap.classList.remove('cooling'), 800);
     }, 1800);
   }
 
-  // Sentence chips
+  /* Phrase */
   renderSentence(d.sentence);
 });
 
 function renderSentence(words) {
-  const label = '<span class="sent-label">Phrase</span>';
+  const label = '<span class="sent-lbl">Phrase</span>';
   const btn   = '<button class="clear-btn" onclick="clearSentence()">Effacer</button>';
-  if (!words || words.length === 0) {
+  if (!words || !words.length) {
     sentRow.innerHTML = label + '<span class="sent-empty">—</span>' + btn;
     return;
   }
-  const chips = words.map((w, i) => {
-    const cls = i === words.length - 1 ? 'chip latest' : 'chip';
-    return `<span class="${cls}">${w}</span>`;
-  }).join('');
+  const chips = words.map((w, i) =>
+    `<span class="wchip${i===words.length-1?' latest':''}">${w}</span>`
+  ).join('');
   sentRow.innerHTML = label + chips + btn;
 }
 
@@ -621,7 +1086,6 @@ function clearSentence() {
   renderSentence([]);
 }
 
-// Keyboard shortcut: Space = clear
 document.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); clearSentence(); }
 });
