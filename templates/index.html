@@ -604,23 +604,32 @@ const CONN = [
   [5,9],[9,13],[13,17]
 ];
 
-/* Matériaux */
-const lineMat = new THREE.LineBasicMaterial({
-  color: 0x6C63FF, transparent: true, opacity: 0.9
-});
-const glowMat = new THREE.LineBasicMaterial({
-  color: 0x9C93FF, transparent: true, opacity: 0.25,
-  blending: THREE.AdditiveBlending
+/* Lumières */
+const ambLight  = new THREE.AmbientLight(0x8899ff, 0.7);
+scene.add(ambLight);
+const keyLight  = new THREE.PointLight(0xaabbff, 2.0, 6);
+keyLight.position.set(0.4, 1.0, 1.5);
+scene.add(keyLight);
+const fillLight = new THREE.PointLight(0x5566ff, 1.0, 6);
+fillLight.position.set(-0.5, -0.2, 1.0);
+scene.add(fillLight);
+
+/* Matériau des os (capsules) */
+const boneMat = new THREE.MeshPhongMaterial({
+  color: 0x5A56E8, emissive: 0x2233AA, emissiveIntensity: 0.45,
+  transparent: true, opacity: 0.80,
+  shininess: 110, specular: 0xaaaaff,
+  side: THREE.DoubleSide
 });
 
-/* Géométrie des lignes */
-const linePos  = new Float32Array(CONN.length * 2 * 3);
-const lineGeo  = new THREE.BufferGeometry();
-lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
-const lines     = new THREE.LineSegments(lineGeo, lineMat);
-const glowLines = new THREE.LineSegments(lineGeo, glowMat);
-scene.add(lines);
-scene.add(glowLines);
+/* Capsules (cylindres) — une par connexion */
+const BONE_RADIUS = 0.016;
+const boneGeo = new THREE.CylinderGeometry(BONE_RADIUS, BONE_RADIUS, 1, 10, 1);
+const bones = CONN.map(() => {
+  const mesh = new THREE.Mesh(boneGeo, boneMat.clone());
+  scene.add(mesh);
+  return mesh;
+});
 
 /* Joints (sphères) */
 const joints = [];
@@ -632,12 +641,16 @@ const JOINT_COLORS = {
   16:0xFFD700,   // bout annulaire
   20:0xFF6B9D,   // bout auriculaire
 };
-const geoS  = new THREE.SphereGeometry(0.028, 10, 10);
-const geoSS = new THREE.SphereGeometry(0.018, 8, 8);
+const geoS  = new THREE.SphereGeometry(0.026, 12, 12);
+const geoSS = new THREE.SphereGeometry(0.017, 10, 10);
 for (let i = 0; i < 21; i++) {
   const col = JOINT_COLORS[i] || 0x8080FF;
   const geo = [0,4,8,12,16,20].includes(i) ? geoS : geoSS;
-  const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95 });
+  const mat = new THREE.MeshPhongMaterial({
+    color: col, emissive: col, emissiveIntensity: 0.35,
+    transparent: true, opacity: 0.95,
+    shininess: 140, specular: 0xffffff
+  });
   const mesh = new THREE.Mesh(geo, mat);
   scene.add(mesh);
   joints.push(mesh);
@@ -693,18 +706,14 @@ function triggerSign(sign) {
   signLabel = sign;
 
   /* Couleur lignes → vert néon pendant la pose */
-  lineMat.color.setHex(0x00FFA3);
-  lineMat.opacity = 1.0;
-  glowMat.color.setHex(0x00FFA3);
+  bones.forEach(b => { b.material.color.setHex(0x00FFA3); b.material.emissive.setHex(0x006644); b.material.opacity = 1.0; });
   ring.material.color.setHex(0x00FFA3);
 
   clearTimeout(signTimer);
   signTimer = setTimeout(() => {
     signTarget = null;
     signLabel  = '';
-    lineMat.color.setHex(0x6C63FF);
-    lineMat.opacity = 0.9;
-    glowMat.color.setHex(0x9C93FF);
+    bones.forEach(b => { b.material.color.setHex(0x5A56E8); b.material.emissive.setHex(0x2233AA); b.material.opacity = 0.80; });
     ring.material.color.setHex(0x6C63FF);
     hand3dCard.classList.remove('signing');
     sttSign.classList.remove('visible');
@@ -717,13 +726,17 @@ function triggerSign(sign) {
   sttSign.classList.add('visible');
 }
 
-function updateLinesFromCurPos() {
+const _boneUp  = new THREE.Vector3(0, 1, 0);
+const _boneDir = new THREE.Vector3();
+function updateBones() {
   CONN.forEach(([a, b], i) => {
     const p = curPos[a], q = curPos[b];
-    linePos[i*6+0]=p.x; linePos[i*6+1]=p.y; linePos[i*6+2]=p.z;
-    linePos[i*6+3]=q.x; linePos[i*6+4]=q.y; linePos[i*6+5]=q.z;
+    _boneDir.subVectors(q, p);
+    const len = _boneDir.length();
+    bones[i].scale.y = len;
+    bones[i].position.addVectors(p, q).multiplyScalar(0.5);
+    if (len > 0.001) bones[i].quaternion.setFromUnitVectors(_boneUp, _boneDir.normalize());
   });
-  lineGeo.attributes.position.needsUpdate = true;
 }
 
 function updateHandLandmarks(landmarks) {
@@ -742,7 +755,7 @@ function updateHandLandmarks(landmarks) {
     ), 0.35);
     joints[i].position.copy(curPos[i]);
   }
-  updateLinesFromCurPos();
+  updateBones();
 }
 
 /* Animation loop */
@@ -757,7 +770,7 @@ function animate3d() {
       curPos[i].lerp(signTarget[i], 0.07);
       joints[i].position.copy(curPos[i]);
     }
-    updateLinesFromCurPos();
+    updateBones();
     scene.position.y = Math.sin(idleT * 1.5) * 0.018;
     scene.rotation.y = Math.sin(idleT * 0.6) * 0.06;
     scene.rotation.x = 0;
