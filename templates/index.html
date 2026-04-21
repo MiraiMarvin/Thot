@@ -831,39 +831,75 @@ let lastWord    = '';
 /* Mapping mot anglais → label de signe connu.
    Couvre bigrams ("thank you") ET mots isolés. */
 const WORD_TO_SIGN = {
-  // Lettres A → Z (épellation)
+  // Lettres A → Z (épellation — identiques FR/EN)
   'a':'A','b':'B','c':'C','d':'D','e':'E','f':'F','g':'G','h':'H','i':'I',
   'j':'J','k':'K','l':'L','m':'M','n':'N','o':'O','p':'P','q':'Q','r':'R',
   's':'S','t':'T','u':'U','v':'V','w':'W','x':'X','y':'Y','z':'Z',
-  // Chiffres écrits
+
+  // Chiffres — français
+  'zéro':'Z','un':'A','deux':'B','trois':'C','quatre':'D','cinq':'F',
+  // Chiffres — anglais
   'zero':'Z','one':'A','two':'B','three':'C','four':'D','five':'F',
-  // Salutations
-  'hello':'hello','hi':'hello','hey':'hello','greetings':'hello',
-  'goodbye':'goodbye','bye':'goodbye','see you':'goodbye',
-  // Affirmations / négations
-  'yes':'yes','yeah':'yes','yep':'yes','sure':'yes','okay':'yes','ok':'yes','alright':'yes',
-  'no':'no','nope':'no','nah':'no','not':'no','never':'no',
-  // Politesse
-  'thanks':'thanks','thank':'thanks','thank you':'thanks',
-  'please':'please','kindly':'please','sorry':'sorry','excuse me':'sorry',
-  // Questions courantes
-  'what':'what','where':'where','when':'when','who':'who','why':'why','how':'how',
-  'help':'help','need help':'help','i need help':'help',
-  // Émotions / états
-  'good':'good','fine':'good','great':'good','wonderful':'good',
-  'bad':'bad','sad':'bad','tired':'bad',
+
+  // Salutations — français
+  'bonjour':'hello','salut':'hello','coucou':'hello','bonsoir':'hello',
+  'au revoir':'goodbye','à bientôt':'goodbye','bonne nuit':'goodbye','bye':'goodbye',
+  // Salutations — anglais
+  'hello':'hello','hi':'hello','hey':'hello','goodbye':'goodbye','see you':'goodbye',
+
+  // Affirmations / négations — français
+  'oui':'yes','ouais':'yes','bien sûr':'yes','absolument':'yes','exactement':'yes',
+  'non':'no','jamais':'no','pas du tout':'no','nan':'no',
+  // Affirmations / négations — anglais
+  'yes':'yes','yeah':'yes','sure':'yes','ok':'yes','okay':'yes','alright':'yes',
+  'no':'no','nope':'no','never':'no',
+
+  // Politesse — français
+  'merci':'thanks','merci beaucoup':'thanks',
+  's il vous plaît':'please','s il te plaît':'please','svp':'please',
+  'désolé':'sorry','désolée':'sorry','pardon':'sorry','excusez moi':'sorry','excuse moi':'sorry',
+  // Politesse — anglais
+  'thanks':'thanks','thank you':'thanks','please':'please','sorry':'sorry','excuse me':'sorry',
+
+  // Questions — français
+  'quoi':'what','où':'where','quand':'when','qui':'who','pourquoi':'why','comment':'how',
+  'aide':'help','aidez moi':'help','aidez-moi':'help','au secours':'help',
+  // Questions — anglais
+  'what':'what','where':'where','when':'when','who':'who','why':'why','how':'how','help':'help',
+
+  // Émotions / états — français
+  'bien':'good','super':'good','génial':'good','parfait':'good','excellent':'good',
+  'mal':'bad','triste':'bad','fatigué':'bad','fatigué':'bad','épuisé':'bad',
+  'heureux':'happy','heureuse':'happy','content':'happy','contente':'happy','joyeux':'happy',
+  'amour':'love','aimer':'love','je t aime':'love',
+  // Émotions / états — anglais
+  'good':'good','fine':'good','great':'good','bad':'bad','sad':'bad','tired':'bad',
   'happy':'happy','love':'love','like':'love',
-  // Actions courantes
-  'eat':'eat','food':'eat','hungry':'eat',
-  'drink':'drink','water':'drink','thirsty':'drink',
+
+  // Actions — français
+  'manger':'eat','nourriture':'eat','j ai faim':'eat','faim':'eat',
+  'boire':'drink','eau':'drink','j ai soif':'drink','soif':'drink',
+  'arrêter':'stop','arrête':'stop','attendre':'wait','attends':'wait',
+  'aller':'go','venir':'come','viens':'come',
+  's asseoir':'sit','assis':'sit','debout':'stand','marcher':'walk','courir':'run',
+  // Actions — anglais
+  'eat':'eat','food':'eat','hungry':'eat','drink':'drink','water':'drink','thirsty':'drink',
   'stop':'stop','wait':'wait','go':'go','come':'come',
   'sit':'sit','stand':'stand','walk':'walk','run':'run',
-  // Personnes
-  'i':'I','me':'I','my':'I',
-  'you':'Y','your':'Y',
-  'friend':'F','family':'F',
-  'mother':'M','mom':'M','father':'F','dad':'D',
-  // Divers utiles
+
+  // Personnes — français
+  'je':'I','moi':'I','mon':'I','ma':'I','mes':'I',
+  'tu':'Y','vous':'Y','ton':'Y','ta':'Y','tes':'Y',
+  'ami':'F','amie':'F','copain':'F','copine':'F','famille':'F',
+  'mère':'M','maman':'M','père':'F','papa':'D','frère':'B','sœur':'S',
+  // Personnes — anglais
+  'i':'I','me':'I','my':'I','you':'Y','your':'Y',
+  'friend':'F','family':'F','mother':'M','mom':'M','father':'F','dad':'D',
+
+  // Divers — français
+  'encore':'A','fini':'F','terminé':'D','prêt':'R','prête':'R',
+  'nom':'N','appeler':'C','téléphone':'P','maison':'H','école':'S','travail':'W',
+  // Divers — anglais
   'more':'M','again':'A','finish':'F','done':'D','ready':'R',
   'name':'N','call':'C','phone':'P','home':'H','school':'S','work':'W',
 };
@@ -878,7 +914,7 @@ const signQueueEl  = document.getElementById('signQueue');
 function parsePhrase(transcript) {
   /* Découpe la phrase en mots, cherche des bigrams puis des mots simples.
      Retourne un tableau ordonné de labels de signes trouvés. */
-  const words  = transcript.toLowerCase().replace(/[^a-z\s]/g, '').trim().split(/\s+/);
+  const words  = transcript.toLowerCase().replace(/[^a-zàâäéèêëîïôùûüçœæ\s]/g, '').trim().split(/\s+/);
   const result = [];
   let i = 0;
   while (i < words.length) {
@@ -984,7 +1020,7 @@ function startMic() {
   recognition = new SpeechRec();
   recognition.continuous      = true;
   recognition.interimResults  = true;
-  recognition.lang            = 'en-US';
+  recognition.lang            = 'fr-FR';
   recognition.maxAlternatives = 1;
 
   recognition.onresult = (event) => {
