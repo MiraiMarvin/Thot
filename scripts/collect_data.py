@@ -35,7 +35,7 @@ SIGN_MAP = {
     ord('a'): 'A',     ord('b'): 'B',   ord('c'): 'C',
     ord('d'): 'D',     ord('e'): 'E',   ord('h'): 'hello',
     ord('y'): 'yes',   ord('n'): 'no',  ord('t'): 'thanks',
-    ord('p'): 'please',
+    ord('p'): 'please', ord('7'): 'seven',
 }
 
 HEADER = ['label'] + [f'{ax}{i}' for i in range(21) for ax in ('x', 'y', 'z')]

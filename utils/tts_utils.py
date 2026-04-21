@@ -1,6 +1,6 @@
 """
 Moteur TTS non-bloquant.
-Priorité : ElevenLabs (Adam) → pyttsx3 (offline) → gTTS fallback.
+Priorité : ElevenLabs (Charlotte) → gTTS (Google) → pyttsx3 (offline).
 """
 import threading
 import platform
@@ -17,17 +17,15 @@ def _load_api_key() -> str | None:
     return os.environ.get('ELEVENLABS_API_KEY')
 
 
-ADAM_VOICE_ID = "pNInz6obpgDQGcFmaJgB"
+CHARLOTTE_VOICE_ID = "XB0fDUnXU5powFXDhCwa"
 
 
 class TTSEngine:
     def __init__(self):
         self._lock   = threading.Lock()
         self._busy   = False
-        self._engine = None
+        self._engine = None          # pyttsx3, initialisé seulement si gTTS échoue
         self._el_key = _load_api_key()
-        if not self._el_key:
-            self._init_pyttsx3()
 
     def _init_pyttsx3(self):
         try:
@@ -49,13 +47,10 @@ class TTSEngine:
             try:
                 if self._el_key:
                     self._elevenlabs(text)
-                elif self._engine:
-                    self._engine.say(text)
-                    self._engine.runAndWait()
                 else:
-                    self._gtts_fallback(text)
+                    self._gtts(text)
             except Exception as e:
-                print(f"[TTS] Erreur ElevenLabs : {e} — fallback pyttsx3")
+                print(f"[TTS] gTTS erreur : {e} — fallback pyttsx3")
                 try:
                     if self._engine is None:
                         self._init_pyttsx3()
@@ -72,9 +67,9 @@ class TTSEngine:
 
         client = ElevenLabs(api_key=self._el_key)
         audio_iter = client.text_to_speech.convert(
-            voice_id=ADAM_VOICE_ID,
+            voice_id=CHARLOTTE_VOICE_ID,
             text=text,
-            model_id="eleven_monolingual_v1",
+            model_id="eleven_turbo_v2_5",
             output_format="mp3_44100_128",
         )
         audio_bytes = b"".join(audio_iter)
@@ -93,7 +88,7 @@ class TTSEngine:
 
         os.unlink(tmp)
 
-    def _gtts_fallback(self, text: str):
+    def _gtts(self, text: str):
         from gtts import gTTS
         tts = gTTS(text=text, lang='en', slow=False)
         with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:

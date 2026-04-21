@@ -33,8 +33,13 @@ MODEL_URL = (
     "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
 )
 
-SMOOTH_WINDOW     = 4
-MIN_STABLE_FRAMES = 8
+SMOOTH_WINDOW     = 3
+MIN_STABLE_FRAMES = 5
+
+# Phrases custom : label détecté → ce que Charlotte dit
+CUSTOM_PHRASES = {
+    "seven": "SIX SEVEEEEENN",
+}
 TTS_COOLDOWN      = 1.5
 CONF_THRESHOLD    = 0.60
 MAX_SENTENCE      = 10
@@ -50,7 +55,7 @@ HAND_CONNECTIONS = [
 
 # Doigts avec traînées (indices MediaPipe)
 FINGERTIP_IDS = [4, 8, 12, 16, 20]
-TRAIL_LEN     = 22
+TRAIL_LEN     = 12
 TRAIL_COLORS  = {
     4:  (180, 80,  255),   # pouce   – violet
     8:  (50,  220, 255),   # index   – cyan
@@ -87,18 +92,17 @@ def download_model(path: str):
 # ── Rendu AR OpenCV ────────────────────────────────────────────────────────────
 
 def draw_trails(frame):
-    """Traînées lumineuses sur chaque bout de doigt."""
+    overlay = frame.copy()
     for tip_id, trail in _trails.items():
         color = TRAIL_COLORS[tip_id]
         pts   = list(trail)
+        n     = len(pts)
         for i, pt in enumerate(pts):
-            ratio  = (i + 1) / len(pts)            # 0 → 1 (ancien → récent)
-            radius = max(1, int(7 * ratio))
-            alpha  = ratio * 0.85
+            ratio  = (i + 1) / n
+            radius = max(1, int(5 * ratio))
             c      = tuple(int(ch * ratio) for ch in color)
-            overlay = frame.copy()
             cv2.circle(overlay, pt, radius, c, -1, cv2.LINE_AA)
-            cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+    cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
 
 
 def draw_joints_glow(frame, pts):
@@ -149,13 +153,12 @@ def draw_holo_label(frame, pts, label: str, confidence: float, stable_progress: 
                   (15, 5, 30), -1)
     cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
 
-    # ── Glow (couche épaisse floue simulée) ──────────────────────────────────
-    for extra_t in [thickness + 6, thickness + 3]:
-        glow = frame.copy()
-        cv2.putText(glow, label,
-                    (label_x, label_y), cv2.FONT_HERSHEY_DUPLEX,
-                    font_scale, (130, 70, 255), extra_t, cv2.LINE_AA)
-        cv2.addWeighted(glow, 0.18, frame, 0.82, 0, frame)
+    # ── Glow ──────────────────────────────────────────────────────────────────
+    glow = frame.copy()
+    cv2.putText(glow, label,
+                (label_x, label_y), cv2.FONT_HERSHEY_DUPLEX,
+                font_scale, (130, 70, 255), thickness + 5, cv2.LINE_AA)
+    cv2.addWeighted(glow, 0.2, frame, 0.8, 0, frame)
 
     # ── Texte principal ───────────────────────────────────────────────────────
     cv2.putText(frame, label,
@@ -305,7 +308,7 @@ def camera_loop():
             if (stable_count >= MIN_STABLE_FRAMES
                     and smoothed is not None
                     and now - last_speak_t > TTS_COOLDOWN):
-                tts.speak(smoothed)
+                tts.speak(CUSTOM_PHRASES.get(smoothed, smoothed))
                 last_speak_t = now
                 stable_count = 0
                 speaking     = True
@@ -353,7 +356,7 @@ def generate_mjpeg():
         if frame is None:
             time.sleep(0.03)
             continue
-        ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
+        ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
         if not ok:
             continue
         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n'
@@ -371,15 +374,31 @@ WELCOME_TEXT = (
 )
 
 def _generate_welcome_audio() -> bytes:
+    api_key = os.environ.get('ELEVENLABS_API_KEY')
+    if api_key:
+        try:
+            from elevenlabs.client import ElevenLabs
+            CHARLOTTE_VOICE_ID = "XB0fDUnXU5powFXDhCwa"
+            print('[TTS] Génération audio via ElevenLabs (Charlotte)…')
+            client = ElevenLabs(api_key=api_key)
+            audio_iter = client.text_to_speech.convert(
+                voice_id=CHARLOTTE_VOICE_ID,
+                text=WELCOME_TEXT,
+                model_id="eleven_turbo_v2_5",
+                output_format="mp3_44100_128",
+            )
+            audio = b"".join(audio_iter)
+            print(f'[TTS] OK — {len(audio)} octets')
+            return audio
+        except Exception as e:
+            print(f'[ElevenLabs] erreur : {e} — fallback gTTS')
     import io
     from gtts import gTTS
     print('[TTS] Génération audio via gTTS (Google)…')
     tts = gTTS(text=WELCOME_TEXT, lang='en', slow=False)
     buf = io.BytesIO()
     tts.write_to_fp(buf)
-    audio = buf.getvalue()
-    print(f'[TTS] OK — {len(audio)} octets')
-    return audio
+    return buf.getvalue()
 
 
 @app.route('/welcome_audio')

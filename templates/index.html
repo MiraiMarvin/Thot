@@ -614,47 +614,104 @@ const fillLight = new THREE.PointLight(0x5566ff, 1.0, 6);
 fillLight.position.set(-0.5, -0.2, 1.0);
 scene.add(fillLight);
 
-/* Matériau des os (capsules) */
-const boneMat = new THREE.MeshPhongMaterial({
-  color: 0x5A56E8, emissive: 0x2233AA, emissiveIntensity: 0.45,
-  transparent: true, opacity: 0.80,
-  shininess: 110, specular: 0xaaaaff,
-  side: THREE.DoubleSide
-});
+/* ── WebGL shaders — main holographique volumétrique ── */
+const SKIN_VERT = `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    vec4 mvPos  = modelViewMatrix * vec4(position, 1.0);
+    vViewDir    = normalize(-mvPos.xyz);
+    vNormal     = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+const SKIN_FRAG = `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  uniform vec3  uBase;
+  uniform vec3  uRim;
+  uniform float uRimPow;
+  uniform float uSSS;
+  uniform float uAlpha;
+  void main() {
+    vec3 N   = normalize(vNormal);
+    vec3 V   = normalize(vViewDir);
+    vec3 L1  = normalize(vec3( 0.55,  0.9, 1.1));
+    vec3 L2  = normalize(vec3(-0.40, -0.3, 0.7));
+    float d1  = max(dot(N, L1), 0.0);
+    float d2  = max(dot(N, L2), 0.0) * 0.22;
+    vec3  H   = normalize(L1 + V);
+    float sp  = pow(max(dot(N, H), 0.0), 90.0) * 0.65;
+    float sss = pow(max(0.0, dot(V, -L1)), 4.0) * uSSS;
+    float rim = pow(1.0 - max(dot(V, N), 0.0), uRimPow);
+    vec3 col  = uBase * (0.10 + d1 + d2 + sss)
+              + vec3(0.5, 0.85, 1.0) * sp
+              + uRim * rim;
+    gl_FragColor = vec4(col, uAlpha + rim * 0.10);
+  }
+`;
 
-/* Capsules (cylindres) — une par connexion */
-const BONE_RADIUS = 0.016;
-const boneGeo = new THREE.CylinderGeometry(BONE_RADIUS, BONE_RADIUS, 1, 10, 1);
-const bones = CONN.map(() => {
-  const mesh = new THREE.Mesh(boneGeo, boneMat.clone());
+function makeMat(baseHex, alpha) {
+  return new THREE.ShaderMaterial({
+    vertexShader:   SKIN_VERT,
+    fragmentShader: SKIN_FRAG,
+    uniforms: {
+      uBase:   { value: new THREE.Color(baseHex) },
+      uRim:    { value: new THREE.Color(0x00CCFF) },
+      uRimPow: { value: 2.5 },
+      uSSS:    { value: 0.40 },
+      uAlpha:  { value: alpha !== undefined ? alpha : 0.92 },
+    },
+    transparent: true,
+    side: THREE.FrontSide,
+    depthWrite: true,
+  });
+}
+
+/* Rayon par segment (ordre = CONN) */
+const BONE_RADII = [
+  0.040, 0.034, 0.028, 0.024,   // pouce
+  0.038, 0.028, 0.024, 0.020,   // index
+  0.038, 0.028, 0.024, 0.020,   // majeur
+  0.036, 0.026, 0.022, 0.018,   // annulaire
+  0.032, 0.024, 0.020, 0.016,   // auriculaire
+  0.036, 0.036, 0.034,           // transversales paume
+];
+const bones = CONN.map((_, i) => {
+  const r   = BONE_RADII[i] || 0.022;
+  const mesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(r, r * 0.9, 1, 14, 1),
+    makeMat(0x2255CC)
+  );
   scene.add(mesh);
   return mesh;
 });
 
-/* Joints (sphères) */
-const joints = [];
-const JOINT_COLORS = {
-  0: 0xFF6B9D,   // poignet – rose
-  4: 0x00FFAA,   // bout pouce
-  8: 0x00D9FF,   // bout index
-  12:0x00D9FF,   // bout majeur
-  16:0xFFD700,   // bout annulaire
-  20:0xFF6B9D,   // bout auriculaire
-};
-const geoS  = new THREE.SphereGeometry(0.026, 12, 12);
-const geoSS = new THREE.SphereGeometry(0.017, 10, 10);
-for (let i = 0; i < 21; i++) {
-  const col = JOINT_COLORS[i] || 0x8080FF;
-  const geo = [0,4,8,12,16,20].includes(i) ? geoS : geoSS;
-  const mat = new THREE.MeshPhongMaterial({
-    color: col, emissive: col, emissiveIntensity: 0.35,
-    transparent: true, opacity: 0.95,
-    shininess: 140, specular: 0xffffff
-  });
-  const mesh = new THREE.Mesh(geo, mat);
+/* Joints */
+const JT_R   = { 0:0.058, 1:0.036, 4:0.026, 5:0.034, 8:0.028,
+                 9:0.034, 12:0.028, 13:0.032, 16:0.026, 17:0.030, 20:0.024 };
+const JT_COL = { 0:0xFF6B9D, 4:0x00FFAA, 8:0x00D9FF,
+                 12:0x00D9FF, 16:0xFFD700, 20:0xFF8844 };
+const joints = Array.from({ length: 21 }, (_, i) => {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(JT_R[i] || 0.022, 14, 10),
+    makeMat(JT_COL[i] || 0x5577EE)
+  );
   scene.add(mesh);
-  joints.push(mesh);
-}
+  return mesh;
+});
+
+/* Paume — maillage dynamique (triangle fan) */
+// landmarks : poignet(0), MCP-index(5), MCP-majeur(9), MCP-annulaire(13), MCP-auriculaire(17), base-pouce(1)
+const PALM_IDX = [0, 5, 9, 13, 17, 1];
+const palmPos  = new Float32Array(PALM_IDX.length * 3);
+const palmGeo  = new THREE.BufferGeometry();
+palmGeo.setAttribute('position', new THREE.BufferAttribute(palmPos, 3).setUsage(THREE.DynamicDrawUsage));
+palmGeo.setIndex([0,1,2, 0,2,3, 0,3,4, 0,4,5, 0,5,1]);
+const palmMesh = new THREE.Mesh(palmGeo, makeMat(0x1A3AB0, 0.52));
+palmMesh.renderOrder = -1;
+palmMesh.visible = false;
+scene.add(palmMesh);
 
 /* Anneau de plateforme */
 const ringGeo = new THREE.RingGeometry(0.55, 0.62, 64);
@@ -667,7 +724,7 @@ ring.rotation.x = -Math.PI / 2;
 ring.position.y = -0.82;
 scene.add(ring);
 
-/* Orbe idle (tourne quand pas de main) */
+/* Orbe idle */
 const orbGeo = new THREE.IcosahedronGeometry(0.35, 1);
 const orbMat = new THREE.MeshBasicMaterial({
   color: 0x4040AA, wireframe: true, transparent: true, opacity: 0.18
@@ -706,15 +763,17 @@ function triggerSign(sign) {
   signLabel = sign;
 
   /* Couleur lignes → vert néon pendant la pose */
-  bones.forEach(b => { b.material.color.setHex(0x00FFA3); b.material.emissive.setHex(0x006644); b.material.opacity = 1.0; });
+  bones.forEach(b => { b.material.uniforms.uBase.value.setHex(0x00CC88); b.material.uniforms.uRim.value.setHex(0x00FFAA); });
   ring.material.color.setHex(0x00FFA3);
+  palmMesh.visible = true;
 
   clearTimeout(signTimer);
   signTimer = setTimeout(() => {
     signTarget = null;
     signLabel  = '';
-    bones.forEach(b => { b.material.color.setHex(0x5A56E8); b.material.emissive.setHex(0x2233AA); b.material.opacity = 0.80; });
+    bones.forEach(b => { b.material.uniforms.uBase.value.setHex(0x2255CC); b.material.uniforms.uRim.value.setHex(0x00CCFF); });
     ring.material.color.setHex(0x6C63FF);
+    if (!hasHand) palmMesh.visible = false;
     hand3dCard.classList.remove('signing');
     sttSign.classList.remove('visible');
     sttSign.textContent = '→ —';
@@ -737,13 +796,21 @@ function updateBones() {
     bones[i].position.addVectors(p, q).multiplyScalar(0.5);
     if (len > 0.001) bones[i].quaternion.setFromUnitVectors(_boneUp, _boneDir.normalize());
   });
+  // Mise à jour maillage paume
+  PALM_IDX.forEach((lmIdx, i) => {
+    const v = curPos[lmIdx];
+    palmPos[i*3] = v.x; palmPos[i*3+1] = v.y; palmPos[i*3+2] = v.z;
+  });
+  palmGeo.attributes.position.needsUpdate = true;
+  palmGeo.computeVertexNormals();
 }
 
 function updateHandLandmarks(landmarks) {
   if (signTarget) return; // pose STT prioritaire sur flux live
 
   hasHand = landmarks && landmarks.length === 21;
-  orb.visible = !hasHand;
+  orb.visible     = !hasHand;
+  palmMesh.visible = hasHand;
   if (!hasHand) return;
 
   for (let i = 0; i < 21; i++) {
@@ -765,7 +832,8 @@ function animate3d() {
 
   if (signTarget) {
     /* ── Mode signe STT : lerp vers la pose ── */
-    orb.visible = false;
+    orb.visible      = false;
+    palmMesh.visible = true;
     for (let i = 0; i < 21; i++) {
       curPos[i].lerp(signTarget[i], 0.07);
       joints[i].position.copy(curPos[i]);
@@ -778,6 +846,7 @@ function animate3d() {
 
   } else if (!hasHand) {
     /* ── Idle : orbe flottant ── */
+    palmMesh.visible = false;
     orb.rotation.y += 0.008;
     orb.rotation.x += 0.004;
     scene.position.y = Math.sin(idleT) * 0.04;
@@ -981,8 +1050,9 @@ function triggerSign(sign, onComplete) {
     new THREE.Vector3(x * 0.65, -y * 0.65, z * 0.3)
   );
   signLabel = sign;
-  bones.forEach(b => { b.material.color.setHex(0x00FFA3); b.material.emissive.setHex(0x006644); b.material.opacity = 1.0; });
+  bones.forEach(b => { b.material.uniforms.uBase.value.setHex(0x00CC88); b.material.uniforms.uRim.value.setHex(0x00FFAA); });
   ring.material.color.setHex(0x00FFA3);
+  palmMesh.visible = true;
 
   hand3dCard.classList.add('signing');
   hand3dCard.classList.remove('lit');
@@ -991,8 +1061,9 @@ function triggerSign(sign, onComplete) {
   signTimer = setTimeout(() => {
     signTarget = null;
     signLabel  = '';
-    bones.forEach(b => { b.material.color.setHex(0x5A56E8); b.material.emissive.setHex(0x2233AA); b.material.opacity = 0.80; });
+    bones.forEach(b => { b.material.uniforms.uBase.value.setHex(0x2255CC); b.material.uniforms.uRim.value.setHex(0x00CCFF); });
     ring.material.color.setHex(0x6C63FF);
+    if (!hasHand) palmMesh.visible = false;
     if (!signQueue.length) hand3dCard.classList.remove('signing');
     if (onComplete) onComplete();
   }, SIGN_HOLD);
