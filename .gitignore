@@ -1,0 +1,41 @@
+# ── Environnement Python ──────────────────────────────────────────────────────
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# ── Variables d'environnement ─────────────────────────────────────────────────
+.env
+.env.*
+
+# ── Données lourdes ───────────────────────────────────────────────────────────
+# Images du dataset Kaggle (1.2 GB + 364 KB)
+data/asl_alphabet_train/
+data/asl_alphabet_test/
+data/*.zip
+
+# Features extraites et labels (reconstruits via build_asl_dataset + preprocess)
+data/X.npy
+data/y.npy
+data/classes.npy
+data/raw_landmarks.csv
+
+# ── Modèles entraînés ─────────────────────────────────────────────────────────
+# Reconstruits via train.py — trop lourds pour GitHub (48 MB chacun)
+models/*.joblib
+models/hand_landmarker.task
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
