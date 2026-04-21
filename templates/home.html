@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SignTranslate AR</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #05041a;
+      --purple:  #6C63FF;
+      --cyan:    #00D9FF;
+      --green:   #00FFA3;
+      --white:   #f0eeff;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: var(--white);
+      overflow: hidden;
+    }
+
+    /* ── Fond animé ── */
+    .bg-glow {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    }
+    .bg-glow::before {
+      content: '';
+      position: absolute;
+      width: 700px; height: 700px;
+      top: -200px; left: 50%;
+      transform: translateX(-50%);
+      background: radial-gradient(circle, rgba(108,99,255,.18) 0%, transparent 70%);
+      animation: glowPulse 5s ease-in-out infinite alternate;
+    }
+    .bg-glow::after {
+      content: '';
+      position: absolute;
+      width: 500px; height: 500px;
+      bottom: -150px; right: -100px;
+      background: radial-gradient(circle, rgba(0,217,255,.10) 0%, transparent 70%);
+      animation: glowPulse 7s ease-in-out infinite alternate-reverse;
+    }
+    @keyframes glowPulse {
+      from { opacity: .6; transform: translateX(-50%) scale(1); }
+      to   { opacity: 1;  transform: translateX(-50%) scale(1.15); }
+    }
+
+    /* ── Grille holographique ── */
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(108,99,255,.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(108,99,255,.06) 1px, transparent 1px);
+      background-size: 48px 48px;
+    }
+
+    /* ── Contenu centré ── */
+    .stage {
+      position: relative; z-index: 1;
+      height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 0;
+      text-align: center;
+      padding: 32px;
+    }
+
+    /* ── Hand canvas idle ── */
+    #idleCanvas {
+      width: 180px; height: 180px;
+      margin-bottom: 32px;
+      opacity: .85;
+    }
+
+    /* ── Badge ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(108,99,255,.15);
+      border: 1px solid rgba(108,99,255,.35);
+      border-radius: 999px;
+      padding: 4px 14px;
+      font-size: .72rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: rgba(200,195,255,.7);
+      margin-bottom: 20px;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: dotBlink 1.8s ease-in-out infinite;
+    }
+    @keyframes dotBlink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── Titre ── */
+    h1 {
+      font-size: clamp(2rem, 6vw, 3.6rem);
+      font-weight: 800;
+      letter-spacing: -.01em;
+      line-height: 1.08;
+      margin-bottom: 16px;
+    }
+    h1 span.grad {
+      background: linear-gradient(135deg, var(--purple), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* ── Sous-titre (tapé par Charlotte) ── */
+    .subtitle {
+      font-size: 1.05rem;
+      color: rgba(200,195,255,.6);
+      max-width: 480px;
+      line-height: 1.6;
+      min-height: 2.6em;
+      margin-bottom: 44px;
+    }
+    .cursor {
+      display: inline-block;
+      width: 2px; height: 1.1em;
+      background: var(--cyan);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: cursorBlink .75s step-end infinite;
+    }
+    @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* ── Bouton ── */
+    .enter-btn {
+      position: relative;
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 16px 40px;
+      border-radius: 999px;
+      border: none; cursor: pointer;
+      font-size: 1rem; font-weight: 700;
+      letter-spacing: .04em;
+      color: #fff;
+      background: linear-gradient(135deg, var(--purple), #4a44cc);
+      box-shadow: 0 0 30px rgba(108,99,255,.45), 0 4px 20px rgba(0,0,0,.4);
+      transition: transform .2s, box-shadow .2s;
+      text-decoration: none;
+      opacity: 0;
+      animation: btnIn .6s .8s ease both;
+    }
+    @keyframes btnIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
+    .enter-btn:hover {
+      transform: translateY(-2px) scale(1.03);
+      box-shadow: 0 0 45px rgba(108,99,255,.65), 0 6px 28px rgba(0,0,0,.4);
+    }
+    .enter-btn:active { transform: scale(.98); }
+    .btn-arrow { font-size: 1.2rem; transition: transform .2s; }
+    .enter-btn:hover .btn-arrow { transform: translateX(4px); }
+
+    /* ── Charlotte wave ── */
+    .charlotte-row {
+      position: absolute;
+      bottom: 28px;
+      display: flex; align-items: center; gap: 10px;
+      opacity: 0;
+      transition: opacity .4s;
+    }
+    .charlotte-row.visible { opacity: 1; }
+    .eq-bars {
+      display: flex; align-items: flex-end; gap: 2px; height: 20px;
+    }
+    .eq-bar {
+      width: 3px; border-radius: 2px;
+      background: var(--cyan);
+      animation: eqAnim var(--spd) ease-in-out infinite alternate;
+    }
+    @keyframes eqAnim { from{height:3px} to{height:var(--h)} }
+    .charlotte-lbl {
+      font-size: .78rem;
+      color: rgba(200,195,255,.5);
+      letter-spacing: .06em;
+    }
+
+    /* ── Transition vers /app ── */
+    .flash-out {
+      animation: flashOut .5s ease forwards;
+    }
+    @keyframes flashOut {
+      to { opacity: 0; transform: scale(1.04); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-glow"></div>
+<div class="grid-bg"></div>
+
+<div class="stage" id="stage">
+
+  <canvas id="idleCanvas" width="180" height="180"></canvas>
+
+  <div class="badge"><span class="badge-dot"></span> AR · Langue des signes</div>
+
+  <h1>Sign<span class="grad">Translate</span> AR</h1>
+
+  <p class="subtitle" id="subtitle"><span class="cursor"></span></p>
+
+  <a href="/app" class="enter-btn" id="enterBtn">
+    Commencer <span class="btn-arrow">→</span>
+  </a>
+
+  <div class="charlotte-row" id="charlotteRow">
+    <div class="eq-bars" id="eqBars"></div>
+    <span class="charlotte-lbl">Charlotte parle…</span>
+  </div>
+
+</div>
+
+<!-- Three.js pour l'orbe idle -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+/* ── Orbe Three.js ── */
+const c3 = document.getElementById('idleCanvas');
+const r3 = new THREE.WebGLRenderer({ canvas: c3, alpha: true, antialias: true });
+r3.setSize(180, 180);
+r3.setClearColor(0x000000, 0);
+
+const sc3 = new THREE.Scene();
+const cam3 = new THREE.PerspectiveCamera(45, 1, 0.01, 10);
+cam3.position.set(0, 0, 2.5);
+
+const aL = new THREE.AmbientLight(0x8899ff, 0.8);
+sc3.add(aL);
+const pL = new THREE.PointLight(0xaabbff, 2, 6);
+pL.position.set(1, 1, 2);
+sc3.add(pL);
+
+const orbG = new THREE.IcosahedronGeometry(0.6, 2);
+const orbM = new THREE.MeshPhongMaterial({
+  color: 0x4a44cc, emissive: 0x1a1880, emissiveIntensity: 0.5,
+  transparent: true, opacity: 0.22, wireframe: true
+});
+const orb = new THREE.Mesh(orbG, orbM);
+sc3.add(orb);
+
+const coreG = new THREE.IcosahedronGeometry(0.35, 1);
+const coreM = new THREE.MeshPhongMaterial({
+  color: 0x6C63FF, emissive: 0x3333aa, emissiveIntensity: 0.6,
+  transparent: true, opacity: 0.5,
+  shininess: 120, specular: 0xaaaaff
+});
+const core = new THREE.Mesh(coreG, coreM);
+sc3.add(core);
+
+const ringG = new THREE.RingGeometry(0.72, 0.78, 64);
+const ringM = new THREE.MeshBasicMaterial({
+  color: 0x6C63FF, transparent: true, opacity: 0.28,
+  side: THREE.DoubleSide
+});
+const ring3 = new THREE.Mesh(ringG, ringM);
+ring3.rotation.x = -Math.PI / 3;
+sc3.add(ring3);
+
+let t3 = 0;
+function loop3() {
+  requestAnimationFrame(loop3);
+  t3 += 0.012;
+  orb.rotation.y += 0.007;
+  orb.rotation.x += 0.004;
+  core.rotation.y -= 0.009;
+  ring3.rotation.z += 0.004;
+  sc3.position.y = Math.sin(t3) * 0.04;
+  r3.render(sc3, cam3);
+}
+loop3();
+
+/* ── EQ bars ── */
+const eqBars = document.getElementById('eqBars');
+const HEIGHTS = [8, 14, 10, 18, 12, 16, 8, 14, 10, 18];
+HEIGHTS.forEach((h, i) => {
+  const bar = document.createElement('div');
+  bar.className = 'eq-bar';
+  bar.style.setProperty('--h', h + 'px');
+  bar.style.setProperty('--spd', (0.35 + i * 0.06) + 's');
+  bar.style.height = '3px';
+  eqBars.appendChild(bar);
+});
+
+/* ── Typewriter ── */
+const subtitleEl = document.getElementById('subtitle');
+const TEXT = "Traduisez votre voix en langue des signes en temps réel, grâce à l'intelligence artificielle.";
+let charIdx = 0;
+function typeChar() {
+  if (charIdx <= TEXT.length) {
+    subtitleEl.innerHTML = TEXT.slice(0, charIdx) + '<span class="cursor"></span>';
+    charIdx++;
+    setTimeout(typeChar, 28 + Math.random() * 18);
+  }
+}
+setTimeout(typeChar, 400);
+
+/* ── Welcome audio Charlotte + transition ── */
+const charlotteRow = document.getElementById('charlotteRow');
+const enterBtn     = document.getElementById('enterBtn');
+let   audioReady   = null;   // blob pré-chargé
+
+// Pré-fetch silencieux dès le chargement de la page
+fetch('/welcome_audio')
+  .then(r => r.status === 204 ? null : r.blob())
+  .then(blob => { audioReady = blob || null; })
+  .catch(() => {});
+
+enterBtn.addEventListener('click', e => {
+  e.preventDefault();
+  enterBtn.style.pointerEvents = 'none';
+
+  function goToApp() {
+    document.getElementById('stage').classList.add('flash-out');
+    setTimeout(() => { window.location.href = '/app'; }, 480);
+  }
+
+  if (!audioReady) { goToApp(); return; }
+
+  const audio = new Audio(URL.createObjectURL(audioReady));
+  audio.volume = 0.95;
+
+  let redirected = false;
+  function safeGoToApp() {
+    if (redirected) return;
+    redirected = true;
+    charlotteRow.classList.remove('visible');
+    goToApp();
+  }
+
+  charlotteRow.classList.add('visible');
+  audio.addEventListener('ended',  safeGoToApp);
+  audio.addEventListener('error',  safeGoToApp);
+
+  audio.play().catch(safeGoToApp);
+
+  // Sécurité : si l'audio dure trop longtemps, on redirige quand même
+  setTimeout(safeGoToApp, 35000);
+});
+</script>
+</body>
+</html>

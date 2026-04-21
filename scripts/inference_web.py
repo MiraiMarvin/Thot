@@ -12,6 +12,9 @@ import os, sys, collections, time, threading, urllib.request
 from flask import Flask, render_template, Response, jsonify
 import pandas as pd
 from flask_socketio import SocketIO
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.hand_utils import extract_landmarks, normalize_landmarks
@@ -358,7 +361,45 @@ def generate_mjpeg():
         time.sleep(0.033)
 
 
+_welcome_cache: bytes | None = None
+
+WELCOME_TEXT = (
+    "Welcome to SignTranslate AR. "
+    "I'm Charlotte, your assistant. "
+    "This platform translates sign language into text in real time. "
+    "Show your hand, and your signs will come to life."
+)
+
+def _generate_welcome_audio() -> bytes:
+    import io
+    from gtts import gTTS
+    print('[TTS] Génération audio via gTTS (Google)…')
+    tts = gTTS(text=WELCOME_TEXT, lang='en', slow=False)
+    buf = io.BytesIO()
+    tts.write_to_fp(buf)
+    audio = buf.getvalue()
+    print(f'[TTS] OK — {len(audio)} octets')
+    return audio
+
+
+@app.route('/welcome_audio')
+def welcome_audio():
+    global _welcome_cache
+    if _welcome_cache is None:
+        try:
+            _welcome_cache = _generate_welcome_audio()
+        except Exception as e:
+            print(f'[ElevenLabs] ERREUR : {e}')
+            return Response(status=204)
+    return Response(_welcome_cache, mimetype='audio/mpeg',
+                    headers={'Cache-Control': 'public, max-age=86400'})
+
+
 @app.route('/')
+def home():
+    return render_template('home.html')
+
+@app.route('/app')
 def index():
     return render_template('index.html')
 
